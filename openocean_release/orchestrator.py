@@ -208,27 +208,33 @@ class Orchestrator:
             self.release.native_platforms + self.release.python_platforms
         ):
             windows = self.runner.section("windows")
+            windows_ready = True
             for key in ("vm_controller", "powershell_runner"):
                 value = windows.get(key)
                 if not isinstance(value, str) or not Path(value).is_file():
                     errors.append(f"runner.windows.{key} is unavailable: {value}")
+                    windows_ready = False
             for key in (
                 "shared_host_root", "shared_guest_root", "ssh_host", "ssh_user",
                 "build_python", "wheelhouse", "cibuildwheel_cache",
             ):
                 if not isinstance(windows.get(key), str) or not windows[key]:
                     errors.append(f"runner.windows.{key} is required")
+                    windows_ready = False
             if self.release.products.matlab and (
                     not isinstance(windows.get("matlab"), str)
                     or not windows["matlab"]):
                 errors.append("runner.windows.matlab is required")
+                windows_ready = False
             for key in ("ssh_private_key", "ssh_known_hosts"):
                 value = windows.get(key)
                 if not isinstance(value, str) or not Path(value).is_file():
                     errors.append(f"runner.windows.{key} is unavailable: {value}")
+                    windows_ready = False
             if not isinstance(windows.get("ssh_port"), int):
                 errors.append("runner.windows.ssh_port must be an integer")
-            if not errors:
+                windows_ready = False
+            if windows_ready:
                 was_logger = self.logger
                 self.logger = logger
                 checks = [
