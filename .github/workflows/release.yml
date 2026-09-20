@@ -1,0 +1,80 @@
+name: OpenOcean Field release
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Operation to run
+        required: true
+        default: build
+        type: choice
+        options: [preflight, build, publish]
+      release_id:
+        description: Existing sealed release ID for publish or resume
+        required: false
+        type: string
+      profile:
+        description: Optional build profile override
+        required: false
+        default: default
+        type: choice
+        options: [default, full, native, python, matlab]
+      version:
+        description: Optional explicit build version
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: openocean-field-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 1440
+    env:
+      OPENOCEAN_RUNNER_CONFIG: ${{ vars.OPENOCEAN_RUNNER_CONFIG }}
+      OOA_FIELD_READ_TOKEN: ${{ secrets.OOA_FIELD_READ_TOKEN }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install orchestrator dependencies
+        shell: bash
+        run: |
+          tools_root="${RUNNER_TEMP}/openocean-release-tools"
+          python3 -m venv "${tools_root}"
+          "${tools_root}/bin/python" -m pip install --requirement requirements.txt
+          printf '%s\n' "${tools_root}/bin" >> "${GITHUB_PATH}"
+      - name: Preflight
+        if: inputs.command == 'preflight'
+        run: |
+          export OPENOCEAN_RUNNER_CONFIG="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
+          python3 main.py preflight -c release.yaml
+      - name: Build and seal
+        if: inputs.command == 'build'
+        shell: bash
+        env:
+          RELEASE_PROFILE: ${{ inputs.profile }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_RESUME_ID: ${{ inputs.release_id }}
+        run: |
+          export OPENOCEAN_RUNNER_CONFIG="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
+          arguments=(build -c release.yaml)
+          if [[ "${RELEASE_PROFILE}" != default ]]; then arguments+=(--profile "${RELEASE_PROFILE}"); fi
+          if [[ -n "${RELEASE_VERSION}" ]]; then arguments+=(--version "${RELEASE_VERSION}"); fi
+          if [[ -n "${RELEASE_RESUME_ID}" ]]; then arguments+=(--resume "${RELEASE_RESUME_ID}"); fi
+          python3 main.py "${arguments[@]}"
+      - name: Publish sealed release
+        if: inputs.command == 'publish'
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          export OPENOCEAN_RUNNER_CONFIG="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
+          test -n "${RELEASE_ID}"
+          python3 main.py publish --release-id "${RELEASE_ID}"

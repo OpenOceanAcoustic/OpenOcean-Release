@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openocean-release"
+version = "1.0.0"
+requires-python = ">=3.10"
+dependencies = ["PyYAML==6.0.3"]
+
+[project.scripts]
+openocean-release = "openocean_release.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["openocean_release*"]

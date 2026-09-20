@@ -1,0 +1,47 @@
+schema: openocean.runner/v1
+
+execution:
+  build_user: <service-account>
+  require_initial_sudo: true
+
+storage:
+  root: <release-storage-root>
+  linux: <release-storage-root>/linux
+  windows: <release-storage-root>/win
+  cache: <release-storage-root>/cache
+  staging: <release-storage-root>/staging
+  releases: <release-storage-root>/releases
+
+linux:
+  engine: docker
+  image: <image-name>@sha256:<digest>
+  inherit_proxy: true
+
+windows:
+  vm_controller: <private-vm-controller>
+  powershell_runner: <private-powershell-runner>
+  shared_host_root: <windows-share-on-host>
+  # The host directory is the durable mirror. The guest path is populated
+  # over the private runner SSH channel before each Windows build.
+  shared_guest_root: 'C:\openocean-release'
+  ssh_host: 127.0.0.1
+  ssh_port: 22225
+  ssh_user: Administrator
+  ssh_private_key: <private-vm-ssh-key>
+  ssh_known_hosts: <private-vm-known-hosts>
+  build_python: '<cibuildwheel-python.exe>'
+  wheelhouse: '<offline-wheelhouse>'
+  cibuildwheel_cache: '<cibuildwheel-cache>'
+  matlab: '<MATLAB-R2025a-executable>'
+  inherit_proxy: true
+  restore_previous_vm_state: true
+
+credentials:
+  source_read_token_env: OOA_FIELD_READ_TOKEN
+  github_publish_token_env: GH_TOKEN
+
+logging:
+  live: true
+  text: true
+  jsonl: true
+  redact_environment: [OOA_FIELD_READ_TOKEN, GH_TOKEN]
