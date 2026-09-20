@@ -870,14 +870,14 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             "files": files,
         }
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        for path in (lock_path, manifest_path, summary_path):
-            checksum_lines.append(f"{sha256_file(path)}  {path.name}")
-        checksums_path.write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
         if self.release.notes == "auto":
             notes_path.write_text(self._automatic_notes(lock), encoding="utf-8")
         else:
             source = (self.release.path.parent / self.release.notes).resolve()
             shutil.copy2(source, notes_path)
+        for path in (lock_path, manifest_path, summary_path, notes_path):
+            checksum_lines.append(f"{sha256_file(path)}  {path.name}")
+        checksums_path.write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
         self.state.document["sealed"] = True
         self.state.document["sealedAt"] = dt.datetime.now(dt.timezone.utc).isoformat()
         self.state.save()
@@ -1180,7 +1180,7 @@ def publish_release(
         if parts[1] in checksum_entries:
             raise RuntimeError(f"SHA256SUMS contains a duplicate path: {parts[1]}")
         checksum_entries[parts[1]] = parts[0]
-    checked_paths = assets + [lock_path, manifest_path, summary_path]
+    checked_paths = assets + [lock_path, manifest_path, summary_path, notes_path]
     expected_checksum_names = {path.name for path in checked_paths}
     if set(checksum_entries) != expected_checksum_names:
         raise RuntimeError("SHA256SUMS file set differs from the sealed release")

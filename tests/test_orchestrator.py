@@ -136,11 +136,12 @@ class PublishVerificationTest(unittest.TestCase):
                 "fieldRunnerBackends": [],
             },
         }), encoding="utf-8")
-        checksum_paths = (lock_path, manifest_path, summary_path)
+        notes_path = root / "release-notes.md"
+        notes_path.write_text("release notes\n", encoding="utf-8")
+        checksum_paths = (lock_path, manifest_path, summary_path, notes_path)
         (root / "SHA256SUMS").write_text("".join(
             f"{sha256_file(path)}  {path.name}\n" for path in checksum_paths),
             encoding="utf-8")
-        (root / "release-notes.md").write_text("release notes\n", encoding="utf-8")
         return root
 
     def test_publish_rechecks_the_complete_sealed_contract(self) -> None:
@@ -163,6 +164,15 @@ class PublishVerificationTest(unittest.TestCase):
             state_path.write_text(json.dumps(state), encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "task set"):
                 publish_release("2026.9.21.1", runner)
+
+    def test_publish_rejects_modified_release_notes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            root = self._sealed_release(releases)
+            (root / "release-notes.md").write_text(
+                "modified after sealing\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "SHA256SUMS mismatch"):
+                publish_release("2026.9.21.1", _Runner(releases))
 
 
 if __name__ == "__main__":
