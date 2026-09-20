@@ -337,7 +337,7 @@ class Orchestrator:
         sha = self.resolved_sources[name]
         root = self.runner.storage("staging") / self.release_id / "sources"
         destination = root / SOURCE_DIRECTORIES[name]
-        marker = destination / ".openocean-release-source.json"
+        marker = root / f".{SOURCE_DIRECTORIES[name]}.json"
 
         def action() -> None:
             if destination.exists():
@@ -375,6 +375,34 @@ class Orchestrator:
                 askpass.unlink(missing_ok=True)
 
         self._run_task(f"checkout.{name}", {"repository": source.repository, "sha": sha}, [marker], action)
+        try:
+            actual_sha = _output(
+                ["git", "rev-parse", "HEAD"], destination)
+            dirty = _output(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                destination,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            actual_sha, dirty = "", "unreadable checkout"
+        if actual_sha != sha or dirty:
+            self.logger.event(
+                f"checkout.{name}", "WARNING",
+                "source checkout is missing, dirty, or at the wrong commit; refetching",
+            )
+            self.rebuild.add(f"checkout.{name}")
+            self._run_task(
+                f"checkout.{name}",
+                {"repository": source.repository, "sha": sha},
+                [marker], action,
+            )
+            actual_sha = _output(["git", "rev-parse", "HEAD"], destination)
+            dirty = _output(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                destination,
+            )
+            if actual_sha != sha or dirty:
+                raise RuntimeError(
+                    f"source checkout verification failed for {name}@{sha}")
         self.source_paths[name] = destination
         return destination
 
