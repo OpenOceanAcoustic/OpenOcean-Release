@@ -23,9 +23,9 @@ windows:
   shared_host_root: <windows-share-on-host>
   # The host directory is the durable mirror. The guest path is populated
   # over the private runner SSH channel before each Windows build.
-  shared_guest_root: 'C:\openocean-release'
-  ssh_host: 127.0.0.1
-  ssh_port: 22225
+  shared_guest_root: '<windows-staging-root>'
+  ssh_host: <private-vm-ssh-host>
+  ssh_port: 22
   ssh_user: Administrator
   ssh_private_key: <private-vm-ssh-key>
   ssh_known_hosts: <private-vm-known-hosts>
