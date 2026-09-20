@@ -30,6 +30,12 @@ class _Runner:
 
 
 class AutomaticNotesTest(unittest.TestCase):
+    def test_resume_id_cannot_escape_release_storage(self) -> None:
+        orchestrator = object.__new__(Orchestrator)
+        orchestrator.resume = "../outside"
+        with self.assertRaisesRegex(RuntimeError, "YYYY.M.D.N"):
+            orchestrator._select_version()
+
     def test_compares_with_latest_published_local_lock(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             releases = Path(temporary)
@@ -64,6 +70,11 @@ class AutomaticNotesTest(unittest.TestCase):
 
 
 class PublishVerificationTest(unittest.TestCase):
+    def test_publish_id_cannot_escape_release_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaisesRegex(RuntimeError, "YYYY.M.D.N"):
+                publish_release("../outside", _Runner(Path(temporary)))
+
     def _sealed_release(self, releases: Path) -> Path:
         release_id = "2026.9.21.1"
         root = releases / release_id

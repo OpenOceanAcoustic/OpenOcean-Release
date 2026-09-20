@@ -17,7 +17,7 @@ from typing import Callable, Iterable, Mapping, Sequence
 
 import yaml
 
-from .config import BACKENDS, LOCK_SCHEMA, ReleaseConfig, RunnerConfig
+from .config import BACKENDS, LOCK_SCHEMA, VERSION_RE, ReleaseConfig, RunnerConfig
 from .github import GitHub, create_public_release
 from .runtime import EventLogger, TaskState, sha256_file, stable_digest
 
@@ -105,6 +105,8 @@ class Orchestrator:
 
     def _select_version(self) -> str:
         if self.resume:
+            if not VERSION_RE.fullmatch(self.resume):
+                raise RuntimeError("--resume must use a YYYY.M.D.N release ID")
             return self.resume
         if self.release.version != "auto":
             return self.release.version
@@ -976,6 +978,8 @@ def publish_release(
     *,
     config: ReleaseConfig | None = None,
 ) -> None:
+    if not VERSION_RE.fullmatch(release_id):
+        raise RuntimeError("--release-id must use a YYYY.M.D.N release ID")
     release_dir = runner.storage("releases") / release_id
     state_path = release_dir / "state.json"
     lock_path = release_dir / "release-lock.yaml"
