@@ -32,7 +32,7 @@ windows:
   build_python: '<cibuildwheel-python.exe>'
   wheelhouse: '<offline-wheelhouse>'
   cibuildwheel_cache: '<cibuildwheel-cache>'
-  matlab: '<MATLAB-R2025a-executable>'
+  matlab: '<MATLAB-R2025b-executable>'
   inherit_proxy: true
   restore_previous_vm_state: true
 

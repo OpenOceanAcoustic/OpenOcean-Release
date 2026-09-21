@@ -14,6 +14,9 @@ from openocean_release.orchestrator import Orchestrator, publish_release
 from openocean_release.runtime import sha256_file
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 class _Runner:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -67,6 +70,15 @@ class AutomaticNotesTest(unittest.TestCase):
             })
             self.assertIn("changes since v2026.9.20.1", notes)
             self.assertIn(f"{'a' * 40}...{'b' * 40}", notes)
+
+
+class MatlabPreflightContractTest(unittest.TestCase):
+    def test_preflight_does_not_require_graphics_or_desktop_experience(self) -> None:
+        source = (ROOT / "openocean_release" / "orchestrator.py").read_text(
+            encoding="utf-8")
+        self.assertNotIn("imagesc", source)
+        self.assertNotIn("InstallationType", source)
+        self.assertNotIn("Desktop Experience", source)
 
 
 class PublishVerificationTest(unittest.TestCase):
