@@ -470,6 +470,9 @@ class Orchestrator:
                 "OOA_LINUX_DIST_DIR": str(output),
                 "OOA_LINUX_BUILD_DIR": str(build),
                 "OOA_FIELD_CI_CACHE_DIR": str(self.runner.storage("cache")),
+                # linux_dist.sh deletes its archive after validating, for CI's
+                # benefit. The release needs the file as an asset.
+                "OOA_KEEP_DIST_ARCHIVE": "1",
                 "GITHUB_RUN_ID": self.release_id.replace(".", ""),
                 "GITHUB_RUN_ATTEMPT": "1",
                 "GITHUB_SHA": self.resolved_sources[family],
