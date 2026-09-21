@@ -126,6 +126,14 @@ class Orchestrator:
         return prefix + str(max(candidates, default=0) + 1)
 
     def prepare(self) -> None:
+        # Sub-builds read this to size their parallelism, and several of them
+        # hardcode a low default: linux_dist.sh falls back to 4 and used to be
+        # overridden to 2 here, while windows_dist.ps1 forced 1. Export one
+        # value from the orchestrator so the docker builds inherit it. The
+        # Windows path runs on the guest, whose own default suits that machine.
+        # An explicit setting in the environment still wins.
+        if not os.environ.get("CMAKE_BUILD_PARALLEL_LEVEL"):
+            os.environ["CMAKE_BUILD_PARALLEL_LEVEL"] = str(min(os.cpu_count() or 4, 8))
         self.release_id = self._select_version()
         self.release_dir = self.runner.storage("releases") / self.release_id
         self.assets_dir = self.release_dir / "assets"
@@ -688,7 +696,7 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
                 "--env", "PIP_CACHE_DIR=/cache/pip",
                 "--env", "PIP_DISABLE_PIP_VERSION_CHECK=1",
                 "--env", f"OPENOCEAN_NATIVE_TOOLCHAIN_ID={image}",
-                "--env", f"CMAKE_BUILD_PARALLEL_LEVEL={os.environ.get('CMAKE_BUILD_PARALLEL_LEVEL', '2')}",
+                "--env", f"CMAKE_BUILD_PARALLEL_LEVEL={os.environ['CMAKE_BUILD_PARALLEL_LEVEL']}",
                 "--volume", f"{output}:/output",
                 "--volume", f"{cache}:/cache",
             ]
@@ -742,6 +750,10 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
         arguments.append(f" --wheelhouse {_ps(wheelhouse)}")
         script = (
             "$ErrorActionPreference = 'Stop'\n"
+            # Set on the guest explicitly: sshd does not forward arbitrary host
+            # environment variables, so the parallel level exported by prepare()
+            # cannot be relied on to reach here.
+            "$env:CMAKE_BUILD_PARALLEL_LEVEL = '6'\n"
             "$env:OPENOCEAN_NATIVE_TOOLCHAIN_ID = 'Visual Studio 17 2022 x64'\n"
             f"$env:CIBW_CACHE_PATH = {_ps(cibuildwheel_cache)}\n"
             f"$env:OPENOCEAN_PYTHON_BUILD_CACHE = {_ps(guest_cache)}\n"
