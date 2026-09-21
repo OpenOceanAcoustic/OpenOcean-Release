@@ -648,7 +648,7 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
   -DOPENOCEAN_FIELD_BUILD_DIST=ON -DOPENOCEAN_FIELD_DIST_WHEEL=OFF `
   -DOPENOCEAN_FIELD_DIST_WASM=OFF -DPython3_EXECUTABLE={_ps(python)}
 if ($LASTEXITCODE -ne 0) {{ throw 'CMake configure failed' }}
-& $cmake --build $build --target dist --config Release --parallel 1
+& $cmake --build $build --target dist --config Release --parallel {os.environ['CMAKE_BUILD_PARALLEL_LEVEL']}
 if ($LASTEXITCODE -ne 0) {{ throw 'CMake dist failed' }}
 Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_asset)} -Force
 """
