@@ -960,7 +960,11 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
         }
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if self.release.notes == "auto":
-            notes_path.write_text(self._automatic_notes(lock), encoding="utf-8")
+            # The guide goes first: it is what a visitor needs before the commit
+            # list. Only for auto notes -- a hand-written notes file is the
+            # author's, and gets published as given.
+            body = self._download_guide() + self._automatic_notes(lock)
+            notes_path.write_text(body, encoding="utf-8")
         else:
             source = (self.release.path.parent / self.release.notes).resolve()
             shutil.copy2(source, notes_path)
@@ -1013,6 +1017,46 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
         except (OSError, subprocess.CalledProcessError) as error:
             self.logger.event(
                 "cleanup", "WARNING", f"guest staging not removed: {error}")
+
+    def _download_guide(self) -> str:
+        """Say which artifact each reader wants.
+
+        The asset names carry a family and a platform but not an audience, so a
+        first-time visitor sees eleven files and no way to tell that the Python
+        bundle is the one that runs out of the box or that RayMode ships under
+        the Bellhop name. This section is prepended to the release notes, which
+        become the published release body.
+        """
+        notes = self.release.notes
+        if notes not in ("auto", ""):
+            return ""
+        release_id = self.release_id
+        lines = [
+            "## Which file do I need?",
+            "",
+            "| I want to | Download |",
+            "| --- | --- |",
+            f"| Run the models from Python | `OpenOcean-Field-Python-{release_id}-<platform>.tar.gz`"
+            " (or `.zip`) — ships wheels for CPython 3.10-3.14, pick your platform,"
+            " then `python install.py` |",
+            f"| Use the models from MATLAB | `OpenOcean-Field-Toolbox-{release_id}-win64.mltbx`"
+            " — Windows x64, MATLAB R2023a or later |",
+            "| Build against the C++ libraries | the `OpenOcean-Field-<family>-...` archive for"
+            " your platform — headers, static and shared libraries, CMake package config,"
+            " and standalone executables |",
+            "",
+            "Each native archive contains two complete trees: `shared/` for dynamic linking"
+            " and `static/` for static linking. Both carry the same headers, so take the one"
+            " whose linkage you need. A CMake consumer resolves the package with"
+            " `find_package(OpenOceanField<Family> CONFIG REQUIRED)` after pointing"
+            " `CMAKE_PREFIX_PATH` at the tree you extracted.",
+            "",
+            "**Family names.** `RayMode` is the ray-tracing family; its libraries,"
+            " executables, and Python wheels all carry the `Bellhop` name."
+            " `NormalMode` covers Kraken and Krakenc, and `PE` covers RAM, RAMGeo, and RAMS.",
+            "",
+        ]
+        return "\n".join(lines)
 
     def _automatic_notes(self, lock: Mapping[str, object]) -> str:
         """Describe the locked sources and compare with the last published lock."""
