@@ -100,6 +100,7 @@ class ReleaseConfig:
     native_families: tuple[str, ...]
     python_platforms: tuple[str, ...]
     python_versions: tuple[str, ...]
+    matlab_test_release: str
 
     @classmethod
     def load(
@@ -238,7 +239,7 @@ class ReleaseConfig:
             expected_matlab = {
                 "platform": "windows-x86_64",
                 "minimum_release": "R2023a",
-                "test_release": "R2025a",
+                "test_release": "R2025b",
                 "toolbox_identifier": "48c2d99b-c630-5cdb-8f78-b7844ec5b673",
                 "embed_native_runtime": True,
             }
@@ -282,6 +283,7 @@ class ReleaseConfig:
             path, normalized, version, profile,
             title, notes, sources, selection,
             native_platforms, native_families, python_platforms, python_versions,
+            str(matlab.get("test_release", "")),
         )
 
     def canonical_bytes(self) -> bytes:
