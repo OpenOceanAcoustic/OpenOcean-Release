@@ -20,6 +20,20 @@ RUNNER_SCHEMA = "openocean.runner/v1"
 LOCK_SCHEMA = "openocean.release-lock/v1"
 SUPPORTED_PROFILES = {"full", "native", "python", "matlab"}
 SUPPORTED_PLATFORMS = {"linux-x86_64", "windows-x86_64"}
+SUPPORTED_TARGETS = (
+    "linux-native",
+    "windows-native",
+    "linux-python",
+    "windows-python",
+    "matlab",
+)
+TARGET_PRODUCTS = {
+    "linux-native": ("native", "linux-x86_64"),
+    "windows-native": ("native", "windows-x86_64"),
+    "linux-python": ("python", "linux-x86_64"),
+    "windows-python": ("python", "windows-x86_64"),
+    "matlab": ("matlab", "windows-x86_64"),
+}
 SUPPORTED_PYTHONS = {"cp310", "cp311", "cp312", "cp313", "cp314"}
 REQUIRED_SOURCES = ("field_core", "ray_mode", "normal_mode", "pe", "toolbox")
 NATIVE_FAMILIES = ("field_core", "ray_mode", "normal_mode", "pe")
@@ -110,6 +124,7 @@ class ReleaseConfig:
         profile_override: str | None = None,
         version_override: str | None = None,
         ref_overrides: Mapping[str, str] | None = None,
+        targets: tuple[str, ...] = (),
     ) -> "ReleaseConfig":
         path = path.resolve()
         document = load_yaml(path)
@@ -202,12 +217,18 @@ class ReleaseConfig:
         _keys(runner, {"enabled", "publish_asset", "backends"}, "products.field_runner")
 
         def enabled(item: Mapping[str, Any], default: bool) -> bool:
-            if profile_override is not None:
+            if profile_override is not None or targets:
                 return default
             result = item.get("enabled", default)
             if not isinstance(result, bool):
                 raise ConfigurationError("product enabled values must be boolean")
             return result
+
+        if targets:
+            requested = {TARGET_PRODUCTS[target][0] for target in targets}
+            profile_defaults = (
+                "native" in requested, "python" in requested, "matlab" in requested,
+            )
 
         selection = ProductSelection(
             enabled(native, profile_defaults[0]),
@@ -217,17 +238,41 @@ class ReleaseConfig:
         )
         native_platforms = _strings(native.get("platforms", []), "products.native.platforms")
         python_platforms = _strings(python.get("platforms", []), "products.python.platforms")
+        if targets:
+            # Narrow each product's platform list to the platforms the targets asked for,
+            # keeping the configured order. --target therefore selects a subset of what
+            # the release config allows; it can never introduce a platform the config omits.
+            native_wanted = {
+                TARGET_PRODUCTS[target][1] for target in targets
+                if TARGET_PRODUCTS[target][0] == "native"
+            }
+            python_wanted = {
+                TARGET_PRODUCTS[target][1] for target in targets
+                if TARGET_PRODUCTS[target][0] == "python"
+            }
+            native_platforms = tuple(p for p in native_platforms if p in native_wanted)
+            python_platforms = tuple(p for p in python_platforms if p in python_wanted)
+            if selection.native and not native_platforms:
+                raise ConfigurationError(
+                    "--target asks for native builds, but products.native.platforms "
+                    "does not allow the requested platform")
+            if selection.python and not python_platforms:
+                raise ConfigurationError(
+                    "--target asks for Python builds, but products.python.platforms "
+                    "does not allow the requested platform")
         python_versions = _strings(python.get("versions", []), "products.python.versions")
         native_families = _strings(native.get("families", []), "products.native.families")
         if selection.native and (set(native_platforms) - SUPPORTED_PLATFORMS):
             raise ConfigurationError("native contains unsupported platforms")
+        if selection.python and (set(python_platforms) - SUPPORTED_PLATFORMS):
+            raise ConfigurationError("python contains unsupported platforms")
         if selection.native and tuple(native_families) != NATIVE_FAMILIES:
             raise ConfigurationError("native.families must contain field_core, ray_mode, normal_mode, pe in order")
         if selection.native and native.get("linkage") != ["shared", "static"]:
             raise ConfigurationError("native.linkage must be [shared, static]")
         if selection.native and native.get("standalone_executables") is not True:
             raise ConfigurationError("native.standalone_executables must be true")
-        if selection.python and set(python_platforms) != SUPPORTED_PLATFORMS:
+        if selection.python and not targets and set(python_platforms) != SUPPORTED_PLATFORMS:
             raise ConfigurationError("python release requires Linux and Windows x86_64")
         if selection.python and set(python_versions) != SUPPORTED_PYTHONS:
             raise ConfigurationError("python release requires cp310 through cp314")
@@ -354,6 +399,19 @@ class RunnerConfig:
         if not isinstance(value, str) or not value:
             raise ConfigurationError(f"runner.credentials.{name} must name an environment variable")
         return value
+
+
+def parse_targets(values: list[str]) -> tuple[str, ...]:
+    """Validate --target values, preserving the order given and rejecting duplicates."""
+    result: list[str] = []
+    for value in values:
+        if value not in SUPPORTED_TARGETS:
+            raise ConfigurationError(
+                f"unsupported --target: {value}; choose one of {', '.join(SUPPORTED_TARGETS)}")
+        if value in result:
+            raise ConfigurationError(f"duplicate --target: {value}")
+        result.append(value)
+    return tuple(result)
 
 
 def parse_ref_overrides(values: list[str]) -> dict[str, str]:
