@@ -25,20 +25,19 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: openocean-field-release
   cancel-in-progress: false
 
 jobs:
-  release:
-    runs-on: [self-hosted, Linux, X64]
+  build:
+    if: inputs.command != 'publish'
+    runs-on: [self-hosted, Linux, X64, openocean-release]
     timeout-minutes: 1440
     env:
       OPENOCEAN_RUNNER_CONFIG: ${{ vars.OPENOCEAN_RUNNER_CONFIG }}
-      OOA_FIELD_READ_TOKEN: ${{ secrets.OOA_FIELD_READ_TOKEN }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +52,8 @@ jobs:
           printf '%s\n' "${tools_root}/bin" >> "${GITHUB_PATH}"
       - name: Preflight
         if: inputs.command == 'preflight'
+        env:
+          OOA_FIELD_READ_TOKEN: ${{ secrets.OOA_FIELD_READ_TOKEN }}
         run: |
           export OPENOCEAN_RUNNER_CONFIG="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
           python3 main.py preflight -c release.yaml
@@ -60,6 +61,7 @@ jobs:
         if: inputs.command == 'build'
         shell: bash
         env:
+          OOA_FIELD_READ_TOKEN: ${{ secrets.OOA_FIELD_READ_TOKEN }}
           RELEASE_PROFILE: ${{ inputs.profile }}
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_RESUME_ID: ${{ inputs.release_id }}
@@ -70,10 +72,30 @@ jobs:
           if [[ -n "${RELEASE_VERSION}" ]]; then arguments+=(--version "${RELEASE_VERSION}"); fi
           if [[ -n "${RELEASE_RESUME_ID}" ]]; then arguments+=(--resume "${RELEASE_RESUME_ID}"); fi
           python3 main.py "${arguments[@]}"
+  publish:
+    if: inputs.command == 'publish'
+    runs-on: [self-hosted, Linux, X64, openocean-release]
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      OPENOCEAN_RUNNER_CONFIG: ${{ vars.OPENOCEAN_RUNNER_CONFIG }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install orchestrator dependencies
+        shell: bash
+        run: |
+          tools_root="${RUNNER_TEMP}/openocean-release-tools"
+          python3 -m venv "${tools_root}"
+          "${tools_root}/bin/python" -m pip install --requirement requirements.txt
+          printf '%s\n' "${tools_root}/bin" >> "${GITHUB_PATH}"
       - name: Publish sealed release
-        if: inputs.command == 'publish'
         env:
           RELEASE_ID: ${{ inputs.release_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           export OPENOCEAN_RUNNER_CONFIG="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
           test -n "${RELEASE_ID}"
