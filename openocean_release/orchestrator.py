@@ -180,7 +180,11 @@ class Orchestrator:
                 probe.unlink()
             except OSError as error:
                 errors.append(f"runner.storage.{name} is not writable: {error}")
-        if (self.release.products.native or self.release.products.python) and shutil.which("docker") is not None:
+        linux_selected = (
+            (self.release.products.native and "linux-x86_64" in self.release.native_platforms)
+            or (self.release.products.python and "linux-x86_64" in self.release.python_platforms)
+        )
+        if linux_selected and shutil.which("docker") is not None:
             linux = self.runner.section("linux")
             image = linux.get("image")
             if not isinstance(image, str) or not image:
@@ -190,8 +194,9 @@ class Orchestrator:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             ).returncode:
                 errors.append(
-                    f"missing pinned Linux Docker image: {image}; build it with "
-                    "tools/build_linux_release_image.sh and update runner.linux.image")
+                    f"missing pinned Linux Docker image: {image}; the image is defined in "
+                    "the ci-image repository and pinned by digest in runner.linux.image. "
+                    "It is a stable build environment and does not track the project.")
             elif self.release.products.python:
                 probe = (
                     "command -v cmake >/dev/null && command -v ninja >/dev/null"
@@ -999,8 +1004,9 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             if self.release.products.native and "windows-x86_64" in self.release.native_platforms:
                 for family in self.release.native_families:
                     self._windows_native(family, guest_sources)
-            if self.release.products.python:
+            if self.release.products.python and "linux-x86_64" in self.release.python_platforms:
                 self._linux_python()
+            if self.release.products.python and "windows-x86_64" in self.release.python_platforms:
                 self._windows_python(guest_sources)
             if self.release.products.matlab:
                 self._windows_matlab(guest_sources)

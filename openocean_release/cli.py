@@ -8,7 +8,13 @@ from pathlib import Path
 import pwd
 import sys
 
-from .config import ConfigurationError, ReleaseConfig, RunnerConfig, parse_ref_overrides
+from .config import (
+    ConfigurationError,
+    ReleaseConfig,
+    RunnerConfig,
+    parse_ref_overrides,
+    parse_targets,
+)
 from .orchestrator import Orchestrator, publish_release
 
 
@@ -18,6 +24,10 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("-c", "--config", type=Path, help="public release YAML")
     result.add_argument("--runner-config", type=Path, help="private runner YAML; defaults to OPENOCEAN_RUNNER_CONFIG")
     result.add_argument("--profile", choices=("full", "native", "python", "matlab"))
+    result.add_argument(
+        "--target", action="append", default=[], metavar="TARGET",
+        help="package only the named component; repeatable. One of: "
+             "linux-native, windows-native, linux-python, windows-python, matlab")
     result.add_argument("--version", help="override auto release version")
     result.add_argument("--ref", action="append", default=[], metavar="SOURCE=REF")
     result.add_argument("--resume", help="resume an existing release ID")
@@ -34,6 +44,7 @@ def _release_config(arguments: argparse.Namespace) -> ReleaseConfig:
         profile_override=arguments.profile,
         version_override=arguments.version,
         ref_overrides=parse_ref_overrides(arguments.ref),
+        targets=parse_targets(arguments.target),
     )
 
 
