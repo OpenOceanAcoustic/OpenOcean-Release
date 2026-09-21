@@ -6,29 +6,34 @@ release:
   title: "OpenOcean Field {version}"
   notes: auto
 
+# Refs are pinned to the exact commits this release is validated at. Using
+# `main` here makes the published code drift away from whatever was last
+# validated every time a source repository advances: the 2026-09-09 validation
+# sat 30-32 commits behind main within twelve days. Pin, then re-pin as part of
+# accepting a new validation run.
 sources:
   field_core:
     repository: OpenOceanAcoustic/OpenOcean-Field-Core
-    ref: main
+    ref: f95bb580e4832064ff77204518ad35b4ec5964ec
   ray_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-RayMode
-    ref: main
+    ref: 05b61e4dbb397ec241a095fdcd1d822b25df0a5e
   normal_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-NormalMode
-    ref: main
+    ref: 9a91001d6e2bb87924a62f4e17a6e2094e234d8d
   pe:
     repository: OpenOceanAcoustic/OpenOcean-Field-PE
-    ref: main
+    ref: ea5e69ea2b7673315ca262cde23dfd0422450b71
   toolbox:
     repository: OpenOceanAcoustic/OpenOcean-Field-Toolbox
-    ref: main
+    ref: dcc331e0b8ac936b587c4fe0a5bf93abc436641b
   wi:
     repository: OpenOceanAcoustic/OpenOcean-Field-WI
-    ref: main
+    ref: 2d3f662c40f688f5aae17b31169bf77a71e0af21
     enabled: false
   couple:
     repository: OpenOceanAcoustic/OpenOcean-Field-Couple
-    ref: main
+    ref: 602e77d8e5eac68a5b60324e77cf58c4c309466f
     enabled: false
 
 products:
