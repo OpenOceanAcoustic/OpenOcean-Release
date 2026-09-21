@@ -39,7 +39,7 @@ build as part of the same invocation.
 
 The MATLAB toolbox uses UUID
 `48c2d99b-c630-5cdb-8f78-b7844ec5b673`, supports Windows x64 and MATLAB R2023a
-or later, and is tested with R2025a. Its runtime comes from the same MSVC build
+or later, and is tested with R2025b. Its runtime comes from the same MSVC build
 as the release gates; MinGW DLLs are rejected.
 
 Publication refuses an existing tag or Release. A successful publish creates

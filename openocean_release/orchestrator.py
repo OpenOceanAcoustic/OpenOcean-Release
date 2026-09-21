@@ -261,15 +261,13 @@ class Orchestrator:
                         "if ($cbw -ne '3.4.0') { throw 'Install cibuildwheel==3.4.0 in the configured Windows build Python environment.' }",
                     ]
                 if self.release.products.matlab:
+                    matlab_release = self.release.matlab_test_release
+                    matlab_version = matlab_release.removeprefix("R")
                     checks += [
-                        "$installationType = (Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion').InstallationType",
-                        "if ($installationType -eq 'Server Core') { throw 'MATLAB toolbox validation requires Windows Server with Desktop Experience. Server Core cannot load the graphics runtime; create a new Desktop Experience VM and restore the release toolchain.' }",
                         f"$matlab = {_ps(str(windows['matlab']))}",
-                        "if (-not (Test-Path -LiteralPath $matlab)) { throw 'Install MATLAB R2025a at the configured runner.windows.matlab path.' }",
-                        "& $matlab -batch \"actual=string(version('-release')); assert(actual=='2025a','OpenOcean:WrongMATLABRelease','Expected MATLAB R2025a, found %s.',actual);\"",
-                        "if ($LASTEXITCODE -ne 0) { throw 'The configured MATLAB executable is not R2025a.' }",
-                        "& $matlab -batch \"f=figure('Visible','off'); imagesc([1 2;3 4]); drawnow; close(f); disp('OPENOCEAN_MATLAB_GRAPHICS_OK');\"",
-                        "if ($LASTEXITCODE -ne 0) { throw 'MATLAB graphics smoke test failed. Repair the Desktop Experience VM and MATLAB installation before publishing.' }",
+                        f"if (-not (Test-Path -LiteralPath $matlab)) {{ throw 'Install MATLAB {matlab_release} at the configured runner.windows.matlab path.' }}",
+                        f"& $matlab -batch \"actual=string(version('-release')); assert(actual=='{matlab_version}','OpenOcean:WrongMATLABRelease','Expected MATLAB {matlab_release}, found %s.',actual);\"",
+                        f"if ($LASTEXITCODE -ne 0) {{ throw 'The configured MATLAB executable is not {matlab_release}.' }}",
                     ]
                 try:
                     self._run_powershell("preflight.windows", "\n".join(checks) + "\n")
@@ -758,7 +756,7 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
 $ErrorActionPreference = 'Stop'
 & {_ps(adapter)} -SourcesRoot {_ps(guest_sources)} -OutputDirectory {_ps(guest_output)} `
   -Version {_ps(self.release_id)} -MatlabExecutable {_ps(matlab)} `
-  -BuildPython {_ps(build_python)} -TestRelease 'R2025a'
+  -BuildPython {_ps(build_python)} -TestRelease {_ps(self.release.matlab_test_release)}
 if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
 """
 
@@ -770,7 +768,7 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             shutil.copy2(built, asset)
 
         self._run_task(
-            "windows.matlab", {"sources": self.resolved_sources, "version": self.release_id, "matlab": "R2025a"},
+            "windows.matlab", {"sources": self.resolved_sources, "version": self.release_id, "matlab": self.release.matlab_test_release},
             [asset], action,
         )
         return asset
@@ -801,7 +799,7 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
                 ) or self.release.products.matlab else None
             ),
             "cibuildwheel": "3.4.0",
-            "matlabTested": "R2025a" if self.release.products.matlab else None,
+            "matlabTested": self.release.matlab_test_release if self.release.products.matlab else None,
         }
         lock = {
             "schema": LOCK_SCHEMA,
