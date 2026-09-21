@@ -648,7 +648,7 @@ New-Item -ItemType Directory -Force -Path $output | Out-Null
   -DOPENOCEAN_FIELD_BUILD_DIST=ON -DOPENOCEAN_FIELD_DIST_WHEEL=OFF `
   -DOPENOCEAN_FIELD_DIST_WASM=OFF -DPython3_EXECUTABLE={_ps(python)}
 if ($LASTEXITCODE -ne 0) {{ throw 'CMake configure failed' }}
-& $cmake --build $build --target dist --config Release --parallel {os.environ['CMAKE_BUILD_PARALLEL_LEVEL']}
+& $cmake --build $build --target dist --config Release --parallel 4
 if ($LASTEXITCODE -ne 0) {{ throw 'CMake dist failed' }}
 Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_asset)} -Force
 """
@@ -753,7 +753,7 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
             # Set on the guest explicitly: sshd does not forward arbitrary host
             # environment variables, so the parallel level exported by prepare()
             # cannot be relied on to reach here.
-            "$env:CMAKE_BUILD_PARALLEL_LEVEL = '6'\n"
+            "$env:CMAKE_BUILD_PARALLEL_LEVEL = '4'\n"
             "$env:OPENOCEAN_NATIVE_TOOLCHAIN_ID = 'Visual Studio 17 2022 x64'\n"
             f"$env:CIBW_CACHE_PATH = {_ps(cibuildwheel_cache)}\n"
             f"$env:OPENOCEAN_PYTHON_BUILD_CACHE = {_ps(guest_cache)}\n"
