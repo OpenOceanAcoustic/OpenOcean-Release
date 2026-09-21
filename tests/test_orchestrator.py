@@ -86,7 +86,9 @@ class WindowsNativeToolchainContractTest(unittest.TestCase):
         source = (ROOT / "openocean_release" / "orchestrator.py").read_text(
             encoding="utf-8")
         self.assertIn(
-            '$env:PATH = "$(Split-Path -Parent $cmake);$env:PATH"', source)
+            '$(Split-Path -Parent $cmake);$(Split-Path -Parent $ninja);',
+            source)
+        self.assertIn("VsDevCmd.bat", source)
 
 
 class PublishVerificationTest(unittest.TestCase):

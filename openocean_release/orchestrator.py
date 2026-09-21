@@ -606,15 +606,29 @@ $source = {_ps(source)}
 $env:GITHUB_SHA = {_ps(self.resolved_sources[family])}
 $build = Join-Path {_ps(guest_root)} {_ps(self.release_id + '\\build\\native\\' + family)}
 $output = {_ps(guest_output)}
+$vswhere = Join-Path ${{env:ProgramFiles(x86)}} 'Microsoft Visual Studio/Installer/vswhere.exe'
+if (-not (Test-Path $vswhere)) {{ throw 'Visual Studio 2022 C++ workload is required' }}
+$vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vs) {{ throw 'Visual Studio 2022 C++ workload is required' }}
+$developerCommand = Join-Path $vs 'Common7/Tools/VsDevCmd.bat'
+if (-not (Test-Path $developerCommand)) {{ throw "Visual Studio developer environment is missing: $developerCommand" }}
+$environmentCommand = "`"$developerCommand`" -no_logo -arch=x64 -host_arch=x64 >nul && set"
+foreach ($line in (& $env:ComSpec /d /s /c $environmentCommand)) {{
+  if ($line -match '^([^=]+)=(.*)$') {{
+    [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+  }}
+}}
 $cmake = (Get-Command cmake.exe -ErrorAction SilentlyContinue).Source
 if (-not $cmake) {{
-  $vswhere = Join-Path ${{env:ProgramFiles(x86)}} 'Microsoft Visual Studio/Installer/vswhere.exe'
-  if (-not (Test-Path $vswhere)) {{ throw 'Visual Studio 2022 C++ workload is required' }}
-  $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
   $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 }}
 if (-not (Test-Path $cmake)) {{ throw "CMake is missing: $cmake" }}
-$env:PATH = "$(Split-Path -Parent $cmake);$env:PATH"
+$ninja = (Get-Command ninja.exe -ErrorAction SilentlyContinue).Source
+if (-not $ninja) {{
+  $ninja = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe'
+}}
+if (-not (Test-Path $ninja)) {{ throw "Ninja is missing: $ninja" }}
+$env:PATH = "$(Split-Path -Parent $cmake);$(Split-Path -Parent $ninja);$env:PATH"
 if (Test-Path $build) {{ Remove-Item -Recurse -Force $build }}
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 & $cmake -S $source -B $build -G 'Visual Studio 17 2022' -A x64 `
