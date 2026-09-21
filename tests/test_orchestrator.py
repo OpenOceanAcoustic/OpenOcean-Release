@@ -81,6 +81,14 @@ class MatlabPreflightContractTest(unittest.TestCase):
         self.assertNotIn("Desktop Experience", source)
 
 
+class WindowsNativeToolchainContractTest(unittest.TestCase):
+    def test_cmake_is_available_to_nested_windows_tests(self) -> None:
+        source = (ROOT / "openocean_release" / "orchestrator.py").read_text(
+            encoding="utf-8")
+        self.assertIn(
+            '$env:PATH = "$(Split-Path -Parent $cmake);$env:PATH"', source)
+
+
 class PublishVerificationTest(unittest.TestCase):
     def test_publish_id_cannot_escape_release_storage(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
