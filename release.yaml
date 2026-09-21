@@ -14,16 +14,16 @@ release:
 sources:
   field_core:
     repository: OpenOceanAcoustic/OpenOcean-Field-Core
-    ref: 1ddf5169b0373a044ac275bc3aac077c0a06cd5a
+    ref: 130dcc43e5143e7fa7c1097b5614f9e2b8982b49
   ray_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-RayMode
-    ref: 2242cee7fc0a74092f64067ef07cd08bf4ee9b8f
+    ref: d6141757a89583612f2d3fff63132faa6510edbd
   normal_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-NormalMode
-    ref: ed62fd517ad4cff83e7e5e55b89ae6f14ca15087
+    ref: 1c24261dd94fcde7e5e049b168121f361920e8e4
   pe:
     repository: OpenOceanAcoustic/OpenOcean-Field-PE
-    ref: 49691a83c5058a2743bb654b880372036e3979be
+    ref: f6560a7ed094f17a9d60b0e09add6df24e3e1d32
   toolbox:
     repository: OpenOceanAcoustic/OpenOcean-Field-Toolbox
     ref: 25f200d4eafd426b4c704cbf7f56a0e24cb4bb36
