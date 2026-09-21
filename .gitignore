@@ -1,0 +1,9 @@
+build/
+dist/
+.release.local.toml
+.venv/
+runner.local.yaml
+*.log
+*.jsonl
+__pycache__/
+*.pyc
