@@ -26,7 +26,7 @@ sources:
     ref: 5fa4c5bb207d1d6deb8c4a97ee8a5cc81ff32228
   toolbox:
     repository: OpenOceanAcoustic/OpenOcean-Field-Toolbox
-    ref: 3daa1e8ffd82bd7a87043ffb352975ac6c0e534c
+    ref: 25f200d4eafd426b4c704cbf7f56a0e24cb4bb36
   wi:
     repository: OpenOceanAcoustic/OpenOcean-Field-WI
     ref: 2d3f662c40f688f5aae17b31169bf77a71e0af21
