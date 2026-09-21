@@ -156,6 +156,37 @@ class Orchestrator:
             raise RuntimeError(
                 f"release {self.release_id} is already sealed; publish it or choose a new version")
         self.logger.event("release", "INFO", f"release ID: {self.release_id}")
+        self._sweep_stale_transients()
+
+    def _sweep_stale_transients(self, max_age_days: int = 3) -> None:
+        """Drop per-release working directories left by earlier runs.
+
+        _cleanup_transients handles runs that reach seal. Runs that fail never
+        get there, and those are the ones that accumulate: five failed attempts
+        on 2026-09-21 left 26 GB of source trees and build output on the guest.
+        The sealed directory is the only durable artifact, so anything matching
+        a release-ID name under these trees is safe to drop once it is old.
+        """
+        assert self.logger is not None
+        cutoff = dt.datetime.now().timestamp() - max_age_days * 86400
+        for name in ("linux", "windows", "staging"):
+            root = self.runner.storage(name)
+            if not root.is_dir():
+                continue
+            for entry in root.iterdir():
+                if entry.name == self.release_id or not entry.is_dir():
+                    continue
+                if _version_key(entry.name) is None:
+                    continue
+                try:
+                    if entry.stat().st_mtime >= cutoff:
+                        continue
+                    shutil.rmtree(entry)
+                    self.logger.event(
+                        "cleanup", "INFO", f"removed stale {name}/{entry.name}")
+                except OSError as error:
+                    self.logger.event(
+                        "cleanup", "WARNING", f"{entry}: {error}")
 
     def preflight(self, *, publishing: bool = False) -> None:
         logger = self.logger or EventLogger(Path(tempfile.mkdtemp(prefix="openocean-preflight-")))
@@ -949,6 +980,40 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
         self.state.document["sealedAt"] = dt.datetime.now(dt.timezone.utc).isoformat()
         self.state.save()
 
+    def _cleanup_transients(self) -> None:
+        """Remove this release's working directories now that it is sealed.
+
+        The products live in the sealed directory, so the per-release staging
+        areas on both sides are dead weight. They accumulate: 2026-09-22 found
+        32 Linux, 28 Windows, and 10 staging directories kept from every run
+        that had ever happened, and the guest's C: drive filled to the point
+        Windows stopped responding mid-build.
+        """
+        assert self.logger is not None
+        for name in ("linux", "windows", "staging"):
+            path = self.runner.storage(name) / self.release_id
+            if not path.is_dir():
+                continue
+            try:
+                shutil.rmtree(path)
+            except OSError as error:
+                self.logger.event("cleanup", "WARNING", f"{path}: {error}")
+        _, guest_root = self._vm_paths()
+        guest_path = guest_root.rstrip("\\/") + "\\" + self.release_id
+        script = (
+            "$ErrorActionPreference = 'Continue'\n"
+            f"$p = {_ps(guest_path)}\n"
+            "if (Test-Path -LiteralPath $p) {\n"
+            "  Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue\n"
+            "}\n"
+            "if (Test-Path -LiteralPath $p) { Write-Host 'cleanup: guest path remains' }\n"
+        )
+        try:
+            self._run_powershell("cleanup", script)
+        except (OSError, subprocess.CalledProcessError) as error:
+            self.logger.event(
+                "cleanup", "WARNING", f"guest staging not removed: {error}")
+
     def _automatic_notes(self, lock: Mapping[str, object]) -> str:
         """Describe the locked sources and compare with the last published lock."""
         current_key = _version_key(self.release_id)
@@ -1032,6 +1097,7 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             if self.release.products.matlab:
                 self._windows_matlab(guest_sources)
             self._seal()
+            self._cleanup_transients()
             assert self.logger is not None
             self.logger.event("release", "INFO", f"sealed release at {self.release_dir}")
             return self.release_id
