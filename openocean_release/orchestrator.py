@@ -614,6 +614,7 @@ if (-not $cmake) {{
   $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 }}
 if (-not (Test-Path $cmake)) {{ throw "CMake is missing: $cmake" }}
+$env:PATH = "$(Split-Path -Parent $cmake);$env:PATH"
 if (Test-Path $build) {{ Remove-Item -Recurse -Force $build }}
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 & $cmake -S $source -B $build -G 'Visual Studio 17 2022' -A x64 `
