@@ -20,6 +20,7 @@ class ReleaseConfigTest(unittest.TestCase):
         self.assertTrue(config.products.native)
         self.assertTrue(config.products.python)
         self.assertTrue(config.products.matlab)
+        self.assertEqual(config.matlab_test_release, "R2025b")
         self.assertEqual(len(BACKENDS), 8)
         self.assertEqual(config.python_versions, ("cp310", "cp311", "cp312", "cp313", "cp314"))
 

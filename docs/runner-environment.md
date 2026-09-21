@@ -20,10 +20,11 @@ runner YAML. Linux and Windows jobs write archives to the matching platform
 directory. Release assembly always uses a release-specific directory and never
 selects the newest file from a shared flat directory.
 
-The Windows VM must use **Windows Server with Desktop Experience**. Server Core
-does not contain the graphics components required by the MATLAB toolbox test
-suite and cannot be converted in place. `preflight` checks the installation
-type and runs an invisible `imagesc` smoke test before any release build.
+The Windows VM may use Windows Server Core. MATLAB toolbox packaging and the
+noninteractive release tests do not require a graphics smoke test. `preflight`
+checks that the configured MATLAB executable exists and matches the release
+declared by the public release contract; it does not create a figure or require
+Desktop Experience.
 
 The Windows build-tool virtual environment is intentionally outside `PATH`;
 the private runner configuration points to it directly. It provides
