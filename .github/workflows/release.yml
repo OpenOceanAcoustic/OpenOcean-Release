@@ -23,6 +23,10 @@ on:
         description: Optional explicit build version
         required: false
         type: string
+      rebuild:
+        description: Optional comma-separated task names to rebuild when resuming
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -65,12 +69,20 @@ jobs:
           RELEASE_PROFILE: ${{ inputs.profile }}
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_RESUME_ID: ${{ inputs.release_id }}
+          RELEASE_REBUILD: ${{ inputs.rebuild }}
         run: |
           export OPENOCEAN_RUNNER_CONFIG="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
           arguments=(build -c release.yaml)
           if [[ "${RELEASE_PROFILE}" != default ]]; then arguments+=(--profile "${RELEASE_PROFILE}"); fi
           if [[ -n "${RELEASE_VERSION}" ]]; then arguments+=(--version "${RELEASE_VERSION}"); fi
           if [[ -n "${RELEASE_RESUME_ID}" ]]; then arguments+=(--resume "${RELEASE_RESUME_ID}"); fi
+          if [[ -n "${RELEASE_REBUILD}" ]]; then
+            IFS=',' read -ra rebuild_tasks <<< "${RELEASE_REBUILD}"
+            for task in "${rebuild_tasks[@]}"; do
+              task="${task//[[:space:]]/}"
+              if [[ -n "${task}" ]]; then arguments+=(--rebuild "${task}"); fi
+            done
+          fi
           python3 main.py "${arguments[@]}"
   publish:
     if: inputs.command == 'publish'
