@@ -921,9 +921,18 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
         else:
             source = (self.release.path.parent / self.release.notes).resolve()
             shutil.copy2(source, notes_path)
-        for path in (lock_path, manifest_path, summary_path, notes_path):
+        for path in (config_path, lock_path, manifest_path, summary_path):
             checksum_lines.append(f"{sha256_file(path)}  {path.name}")
         checksums_path.write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
+        # Keep every sealed file group-readable. Assets arrive by different routes
+        # (Windows ones are copied back from the guest, Linux ones are written
+        # locally) and would otherwise land with inconsistent modes.
+        for path in sorted(self.release_dir.iterdir()):
+            if path.is_file():
+                path.chmod(0o640)
+        for path in sorted(self.assets_dir.iterdir()):
+            if path.is_file():
+                path.chmod(0o640)
         self.state.document["sealed"] = True
         self.state.document["sealedAt"] = dt.datetime.now(dt.timezone.utc).isoformat()
         self.state.save()
@@ -1227,14 +1236,14 @@ def publish_release(
         if parts[1] in checksum_entries:
             raise RuntimeError(f"SHA256SUMS contains a duplicate path: {parts[1]}")
         checksum_entries[parts[1]] = parts[0]
-    checked_paths = assets + [lock_path, manifest_path, summary_path, notes_path]
+    checked_paths = assets + [config_path, lock_path, manifest_path, summary_path]
     expected_checksum_names = {path.name for path in checked_paths}
     if set(checksum_entries) != expected_checksum_names:
         raise RuntimeError("SHA256SUMS file set differs from the sealed release")
     for path in checked_paths:
         if sha256_file(path) != checksum_entries[path.name]:
             raise RuntimeError(f"SHA256SUMS mismatch: {path.name}")
-    assets += [lock_path, manifest_path, checksums_path, summary_path]
+    assets += [config_path, lock_path, manifest_path, checksums_path, summary_path]
     token_env = runner.credential_env("github_publish_token_env")
     target = orchestrator["commit"]
     title_template = release_values.get("title", "OpenOcean Field {version}")

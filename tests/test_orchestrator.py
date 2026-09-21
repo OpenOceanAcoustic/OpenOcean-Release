@@ -160,7 +160,10 @@ class PublishVerificationTest(unittest.TestCase):
         }), encoding="utf-8")
         notes_path = root / "release-notes.md"
         notes_path.write_text("release notes\n", encoding="utf-8")
-        checksum_paths = (lock_path, manifest_path, summary_path, notes_path)
+        # release-notes.md is the Release body, not an uploaded asset, so it is
+        # deliberately outside the checksum set. release-config.yaml is inside it:
+        # the lock publishes configSha256 and consumers need the file to verify it.
+        checksum_paths = (config_path, lock_path, manifest_path, summary_path)
         (root / "SHA256SUMS").write_text("".join(
             f"{sha256_file(path)}  {path.name}\n" for path in checksum_paths),
             encoding="utf-8")
@@ -187,12 +190,17 @@ class PublishVerificationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "task set"):
                 publish_release("2026.9.21.1", runner)
 
-    def test_publish_rejects_modified_release_notes(self) -> None:
+    def test_publish_rejects_modified_release_config(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             releases = Path(temporary)
             root = self._sealed_release(releases)
-            (root / "release-notes.md").write_text(
-                "modified after sealing\n", encoding="utf-8")
+            # Corrupt one recorded digest while keeping the file-name set
+            # intact, so the per-file comparison is what rejects it. Editing the
+            # config instead would be caught earlier by the lock's configSha256.
+            checksums_path = root / "SHA256SUMS"
+            lines = checksums_path.read_text(encoding="utf-8").splitlines(True)
+            lines[-1] = "0" * 64 + lines[-1][64:]
+            checksums_path.write_text("".join(lines), encoding="utf-8")
             with self.assertRaisesRegex(RuntimeError, "SHA256SUMS mismatch"):
                 publish_release("2026.9.21.1", _Runner(releases))
 
