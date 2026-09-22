@@ -539,6 +539,8 @@ class Orchestrator:
             [sys.executable, controller, "status"], text=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         )
+        if status.returncode:
+            raise RuntimeError("cannot determine Windows VM state: " + status.stdout.strip())
         text = status.stdout.lower()
         self.vm_was_running = "running" in text and "not running" not in text
         if not self.vm_was_running:

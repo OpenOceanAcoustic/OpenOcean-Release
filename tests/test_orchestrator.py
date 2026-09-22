@@ -82,6 +82,20 @@ class MatlabPreflightContractTest(unittest.TestCase):
 
 
 class WindowsNativeToolchainContractTest(unittest.TestCase):
+    def test_failed_vm_status_never_starts_or_stops_the_guest(self) -> None:
+        orchestrator = object.__new__(Orchestrator)
+        orchestrator.vm_was_running = None
+        orchestrator.runner = mock.Mock()
+        orchestrator.runner.section.return_value = {"vm_controller": "vmctl.py"}
+        orchestrator.logger = mock.Mock()
+        with mock.patch("openocean_release.orchestrator.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=1, stdout="permission denied")
+            with self.assertRaisesRegex(RuntimeError, "cannot determine Windows VM state"):
+                orchestrator._ensure_vm()
+        orchestrator._restore_vm()
+        self.assertIsNone(orchestrator.vm_was_running)
+        orchestrator.logger.command.assert_not_called()
+
     def test_cmake_is_available_to_nested_windows_tests(self) -> None:
         source = (ROOT / "openocean_release" / "orchestrator.py").read_text(
             encoding="utf-8")
