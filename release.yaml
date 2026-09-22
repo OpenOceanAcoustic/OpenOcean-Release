@@ -18,7 +18,7 @@ sources:
     ref: 5ba60ef2d0a6c5149ccc07c6f2f28f8199833562
   ray_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-RayMode
-    ref: a49ad4ce4297893ea99965bb993a41085d0b960c
+    ref: cb36802e869b022e0a4e9dc90a1162811f7a9b84
   normal_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-NormalMode
     ref: b9c74d61a03c973ff8a201d1d1455523213e1c4e
