@@ -1272,7 +1272,7 @@ def publish_release(
     if matlab_enabled:
         expected_tasks.add("windows.matlab")
         expected_assets[
-            f"OpenOcean-Field-Toolbox-{release_id}-win64.mltbx"
+            f"OpenOcean-Field-Toolbox-{release_id}-win64.zip"
         ] = ("matlab", "windows-x86_64")
     windows_selected = (
         matlab_enabled
