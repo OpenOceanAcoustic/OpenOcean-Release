@@ -24,7 +24,7 @@ a task when both match. `--rebuild TASK` invalidates that task explicitly.
 Logs stay on the runner and are never attached to the GitHub Release.
 
 The full profile produces four native packages for each of Linux and Windows,
-one Python SDK bundle for each OS, and one Windows MATLAB toolbox. Native
+one Python SDK bundle for each OS, and one Windows MATLAB bundle. Native
 packages contain shared, static, executable, headers, licenses, dependency
 notes, and CMake metadata. Each Python bundle contains a pure facade wheel plus
 FieldCore, Bellhop, NormalMode, and PE native wheels for CPython 3.10 through
@@ -37,10 +37,14 @@ consumer build and executable test before its archive is accepted. The native
 `dist` gate runs each source repository's original test suite from the static
 build as part of the same invocation.
 
-The MATLAB toolbox uses UUID
-`48c2d99b-c630-5cdb-8f78-b7844ec5b673`, supports Windows x64 and MATLAB R2023a
-or later, and is tested with R2025b. Its runtime comes from the same MSVC build
-as the release gates; MinGW DLLs are rejected.
+The MATLAB bundle is a zip holding the toolbox package
+`OpenOcean-Field-Toolbox-<release-id>-win64.mltbx` beside
+`examples/reference/cases/`, the 35-case benchmark library. The toolbox uses
+UUID `48c2d99b-c630-5cdb-8f78-b7844ec5b673`, supports Windows x64 and MATLAB
+R2023a or later, and is tested with R2025b. Its runtime comes from the same
+MSVC build as the release gates; MinGW DLLs are rejected. The toolbox carries
+generated help pages, so `doc openocean` opens the guides and the API
+reference from the installed copy.
 
 Publication refuses an existing tag or Release. A successful publish creates
 `v<release-id>` in this repository at the orchestrator commit recorded in the

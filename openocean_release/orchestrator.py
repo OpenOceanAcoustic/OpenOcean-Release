@@ -814,7 +814,11 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
         host_output = host_root / self.release_id / "matlab"
         host_output.mkdir(parents=True, exist_ok=True)
         guest_output = f"{guest_root}\\{self.release_id}\\matlab"
-        asset = self.assets_dir / f"OpenOcean-Field-Toolbox-{self.release_id}-win64.mltbx"
+        # The adapter builds a distribution directory holding the toolbox
+        # package beside the reference cases, then zips the pair. The zip is
+        # the product: the .mltbx alone would ship without the cases it
+        # documents, and the cases alone without an installer.
+        asset = self.assets_dir / f"OpenOcean-Field-Toolbox-{self.release_id}-win64.zip"
         adapter = f"{guest_sources}\\{SOURCE_DIRECTORIES['toolbox']}\\scripts\\build_matlab_release.ps1"
         matlab = str(self.runner.section("windows")["matlab"])
         build_python = str(self.runner.section("windows")["build_python"])
@@ -927,7 +931,7 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             })
         if self.release.products.matlab:
             expected_assets.add(
-                f"OpenOcean-Field-Toolbox-{self.release_id}-win64.mltbx")
+                f"OpenOcean-Field-Toolbox-{self.release_id}-win64.zip")
         actual_assets = {
             path.name for path in self.assets_dir.iterdir() if path.is_file()
         }
@@ -944,10 +948,14 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
                 continue
             digest = sha256_file(path)
             name = path.name
-            kind = "matlab" if name.endswith(".mltbx") else (
+            # The toolbox product is a zip, so test for it before the platform
+            # suffix: "-win64.zip" would otherwise read as a native Windows
+            # archive.
+            is_toolbox = name.startswith("OpenOcean-Field-Toolbox-")
+            kind = "matlab" if is_toolbox else (
                 "python" if "-Python-" in name else "native")
             target_platform = "windows-x86_64" if (
-                "windows-x86_64" in name or name.endswith("-win64.mltbx")) else "linux-x86_64"
+                is_toolbox or "windows-x86_64" in name) else "linux-x86_64"
             files.append({
                 "path": name,
                 "type": kind,
@@ -1042,8 +1050,10 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             f"| Run the models from Python | `OpenOcean-Field-Python-{release_id}-<platform>.tar.gz`"
             " (or `.zip`) — ships wheels for CPython 3.10-3.14, pick your platform,"
             " then `python install.py` |",
-            f"| Use the models from MATLAB | `OpenOcean-Field-Toolbox-{release_id}-win64.mltbx`"
-            " — Windows x64, MATLAB R2023a or later |",
+            f"| Use the models from MATLAB | `OpenOcean-Field-Toolbox-{release_id}-win64.zip`"
+            " — unzip it, then install the `.mltbx` inside. Windows x64, MATLAB R2023a"
+            " or later. The archive also carries `examples/reference/cases/`, 35"
+            " benchmark cases with runnable demo scripts |",
             "| Build against the C++ libraries | the `OpenOcean-Field-<family>-...` archive for"
             " your platform — headers, static and shared libraries, CMake package config,"
             " and standalone executables |",
