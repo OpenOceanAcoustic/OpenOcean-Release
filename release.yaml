@@ -26,7 +26,7 @@ sources:
     ref: 9885265407039e46927cea92864d1a798b59c6d2
   toolbox:
     repository: OpenOceanAcoustic/OpenOcean-Field-Toolbox
-    ref: b86f2a17d67962430b20824610d4e0a7092444ef
+    ref: d38dfb580911889e9151b7f73ec07dc6d280bb2d
   wi:
     repository: OpenOceanAcoustic/OpenOcean-Field-WI
     ref: 2d3f662c40f688f5aae17b31169bf77a71e0af21
@@ -55,7 +55,7 @@ products:
     platform: windows-x86_64
     minimum_release: R2023a
     test_release: R2025b
-    toolbox_identifier: 48c2d99b-c630-5cdb-8f78-b7844ec5b673
+    toolbox_identifier: openocean-field-tools
     embed_native_runtime: true
   field_runner:
     enabled: true

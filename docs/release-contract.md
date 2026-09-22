@@ -40,7 +40,7 @@ build as part of the same invocation.
 The MATLAB bundle is a zip holding the toolbox package
 `OpenOcean-Field-Toolbox-<release-id>-win64.mltbx` beside
 `examples/reference/cases/`, the 35-case benchmark library. The toolbox uses
-UUID `48c2d99b-c630-5cdb-8f78-b7844ec5b673`, supports Windows x64 and MATLAB
+UUID `openocean-field-tools`, supports Windows x64 and MATLAB
 R2023a or later, and is tested with R2025b. Its runtime comes from the same
 MSVC build as the release gates; MinGW DLLs are rejected. The toolbox carries
 generated help pages, so `doc openocean` opens the guides and the API
