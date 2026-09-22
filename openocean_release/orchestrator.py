@@ -17,7 +17,7 @@ from typing import Callable, Iterable, Mapping, Sequence
 
 import yaml
 
-from .config import BACKENDS, LOCK_SCHEMA, VERSION_RE, ReleaseConfig, RunnerConfig
+from .config import BACKENDS, LOCK_SCHEMA, VERSION_RE, ReleaseConfig, RunnerConfig, release_tag
 from .github import GitHub, create_public_release
 from .runtime import EventLogger, TaskState, sha256_file, stable_digest
 
@@ -29,12 +29,16 @@ SOURCE_DIRECTORIES = {
     "normal_mode": "OpenOcean-Field-NormalMode",
     "pe": "OpenOcean-Field-PE",
     "toolbox": "OpenOcean-Field-Toolbox",
+    "wi": "OpenOcean-Field-WI",
+    "couple": "OpenOcean-Field-Couple",
 }
 NATIVE_ASSET_NAMES = {
     "field_core": "OpenOcean-Field-Core",
     "ray_mode": "OpenOcean-Field-RayMode",
     "normal_mode": "OpenOcean-Field-NormalMode",
     "pe": "OpenOcean-Field-PE",
+    "wi": "OpenOcean-Field-WI",
+    "couple": "OpenOcean-Field-Couple",
 }
 
 
@@ -106,7 +110,7 @@ class Orchestrator:
     def _select_version(self) -> str:
         if self.resume:
             if not VERSION_RE.fullmatch(self.resume):
-                raise RuntimeError("--resume must use a YYYY.M.D.N release ID")
+                raise RuntimeError("--resume must use an X.Y.Z or YYYY.M.D.N release ID")
             return self.resume
         if self.release.version != "auto":
             return self.release.version
@@ -176,7 +180,7 @@ class Orchestrator:
             for entry in root.iterdir():
                 if entry.name == self.release_id or not entry.is_dir():
                     continue
-                if _version_key(entry.name) is None:
+                if not VERSION_RE.fullmatch(entry.name):
                     continue
                 try:
                     if entry.stat().st_mtime >= cutoff:
@@ -647,6 +651,13 @@ if (-not (Test-Path -LiteralPath $marker)) {{
         asset = self.assets_dir / f"{NATIVE_ASSET_NAMES[family]}-{self.release_id}-windows-x86_64.zip"
         guest_asset = f"{guest_output}\\{asset.name}"
         python = str(self.runner.section("windows")["build_python"])
+        eigen_script = guest_sources + "\\OpenOcean-Field-Toolbox\\scripts\\windows_eigen.py"
+        eigen_setup = (
+            f"$eigen = & {_ps(python)} {_ps(eigen_script)}\n"
+            "if ($LASTEXITCODE -ne 0) { throw 'Preloaded Eigen package was not found' }\n"
+            "$extraArguments = @(\"-DEigen3_DIR=$eigen\")\n"
+            if family == "wi" else "$extraArguments = @()\n"
+        )
         script = f"""
 $ErrorActionPreference = 'Stop'
 $source = {_ps(source)}
@@ -678,9 +689,10 @@ if (-not (Test-Path $ninja)) {{ throw "Ninja is missing: $ninja" }}
 $env:PATH = "$(Split-Path -Parent $cmake);$(Split-Path -Parent $ninja);$env:PATH"
 if (Test-Path $build) {{ Remove-Item -Recurse -Force $build }}
 New-Item -ItemType Directory -Force -Path $output | Out-Null
+{eigen_setup}
 & $cmake -S $source -B $build -G 'Visual Studio 17 2022' -A x64 `
   -DOPENOCEAN_FIELD_BUILD_DIST=ON -DOPENOCEAN_FIELD_DIST_WHEEL=OFF `
-  -DOPENOCEAN_FIELD_DIST_WASM=OFF -DPython3_EXECUTABLE={_ps(python)}
+  -DOPENOCEAN_FIELD_DIST_WASM=OFF -DPython3_EXECUTABLE={_ps(python)} @extraArguments
 if ($LASTEXITCODE -ne 0) {{ throw 'CMake configure failed' }}
 & $cmake --build $build --target dist --config Release --parallel 4
 if ($LASTEXITCODE -ne 0) {{ throw 'CMake dist failed' }}
@@ -719,7 +731,7 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
             cache.mkdir(parents=True, exist_ok=True)
             container_sources = {
                 name: f"/sources/{SOURCE_DIRECTORIES[name]}"
-                for name in ("field_core", "ray_mode", "normal_mode", "pe", "toolbox")
+                for name in ("field_core", "ray_mode", "normal_mode", "pe", "toolbox", "wi", "couple")
             }
             command = [
                 "docker", "run", "--rm", "--pull=never", "--init",
@@ -746,7 +758,7 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
                 "--platform", "linux", "--version", self.release_id,
                 "--output", "/output",
             ]
-            for name in ("field_core", "ray_mode", "normal_mode", "pe", "toolbox"):
+            for name in ("field_core", "ray_mode", "normal_mode", "pe", "toolbox", "wi", "couple"):
                 command += [f"--source-{name.replace('_', '-')}", container_sources[name]]
             self.logger.command("linux.python", command)
             built = output / asset.name
@@ -776,7 +788,7 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
         arguments = [
             f"& {_ps(python)} {_ps(adapter)} --platform windows --version {_ps(self.release_id)} --output {_ps(guest_output)}",
         ]
-        for name in ("field_core", "ray_mode", "normal_mode", "pe", "toolbox"):
+        for name in ("field_core", "ray_mode", "normal_mode", "pe", "toolbox", "wi", "couple"):
             guest_source = guest_sources + "\\" + SOURCE_DIRECTORIES[name]
             arguments.append(
                 f" --source-{name.replace('_', '-')} {_ps(guest_source)}"
@@ -1139,6 +1151,8 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
         )
         guest_sources = ""
         try:
+            if self.release.products.python and "linux-x86_64" in self.release.python_platforms:
+                self._linux_python()
             if self.release.products.native and "linux-x86_64" in self.release.native_platforms:
                 for family in self.release.native_families:
                     self._linux_native(family)
@@ -1147,8 +1161,6 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             if self.release.products.native and "windows-x86_64" in self.release.native_platforms:
                 for family in self.release.native_families:
                     self._windows_native(family, guest_sources)
-            if self.release.products.python and "linux-x86_64" in self.release.python_platforms:
-                self._linux_python()
             if self.release.products.python and "windows-x86_64" in self.release.python_platforms:
                 self._windows_python(guest_sources)
             if self.release.products.matlab:
@@ -1170,7 +1182,7 @@ def publish_release(
     config: ReleaseConfig | None = None,
 ) -> None:
     if not VERSION_RE.fullmatch(release_id):
-        raise RuntimeError("--release-id must use a YYYY.M.D.N release ID")
+        raise RuntimeError("--release-id must use an X.Y.Z or YYYY.M.D.N release ID")
     release_dir = runner.storage("releases") / release_id
     state_path = release_dir / "state.json"
     lock_path = release_dir / "release-lock.yaml"
@@ -1385,7 +1397,7 @@ def publish_release(
     title = str(title_template).format(version=release_id)
     create_public_release(
         repository=RELEASE_REPOSITORY,
-        tag=f"v{release_id}",
+        tag=release_tag(release_values.get("tag", "v{version}"), release_id),
         target_sha=target,
         title=title,
         notes_file=notes_path,
@@ -1394,7 +1406,7 @@ def publish_release(
     )
     state["published"] = True
     state["publishedAt"] = dt.datetime.now(dt.timezone.utc).isoformat()
-    state["publishedTag"] = f"v{release_id}"
+    state["publishedTag"] = release_tag(release_values.get("tag", "v{version}"), release_id)
     temporary = state_path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     temporary.replace(state_path)

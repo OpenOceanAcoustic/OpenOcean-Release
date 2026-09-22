@@ -1,10 +1,11 @@
 schema: openocean.release/v1
 
 release:
-  version: auto
+  version: 1.0.0
+  tag: "OpenOcean-Field-V{version}"
   profile: full
-  title: "OpenOcean Field {version}"
-  notes: auto
+  title: "OpenOcean-Field-V{version}"
+  notes: docs/releases/openocean-field-v1.0.0.md
 
 # Refs are pinned to the exact commits this release is validated at. Using
 # `main` here makes the published code drift away from whatever was last
@@ -14,33 +15,33 @@ release:
 sources:
   field_core:
     repository: OpenOceanAcoustic/OpenOcean-Field-Core
-    ref: 11e2e68e96f776636eb68d270de785dd52c2ba0a
+    ref: 5ba60ef2d0a6c5149ccc07c6f2f28f8199833562
   ray_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-RayMode
-    ref: 6b50ac4d95caf0e80d4eafd61f45fdf56fb307e8
+    ref: a49ad4ce4297893ea99965bb993a41085d0b960c
   normal_mode:
     repository: OpenOceanAcoustic/OpenOcean-Field-NormalMode
-    ref: 10bbc70b74283679f21212c3712e4970e90daf6e
+    ref: b9c74d61a03c973ff8a201d1d1455523213e1c4e
   pe:
     repository: OpenOceanAcoustic/OpenOcean-Field-PE
-    ref: 9885265407039e46927cea92864d1a798b59c6d2
+    ref: b9efda4bc1c09de6a00d80d9dcaabe1dda06433d
   toolbox:
     repository: OpenOceanAcoustic/OpenOcean-Field-Toolbox
-    ref: d38dfb580911889e9151b7f73ec07dc6d280bb2d
+    ref: c5c1bf2d135e103101c21e66c1f0995def01002b
   wi:
     repository: OpenOceanAcoustic/OpenOcean-Field-WI
-    ref: 2d3f662c40f688f5aae17b31169bf77a71e0af21
-    enabled: false
+    ref: 5028741e9827729cd1b8394da545843c141ea627
+    enabled: true
   couple:
     repository: OpenOceanAcoustic/OpenOcean-Field-Couple
-    ref: 602e77d8e5eac68a5b60324e77cf58c4c309466f
-    enabled: false
+    ref: c7f6ce321e4a017070b101979a4b11e92d5c4089
+    enabled: true
 
 products:
   native:
     enabled: true
-    platforms: [linux-x86_64, windows-x86_64]
-    families: [field_core, ray_mode, normal_mode, pe]
+    platforms: [windows-x86_64]
+    families: [field_core, ray_mode, normal_mode, pe, wi, couple]
     linkage: [shared, static]
     standalone_executables: true
   python:
@@ -69,6 +70,8 @@ products:
       - pe.ram
       - pe.ramgeo
       - pe.rams
+      - wi.oast
+      - couple
 
 output:
   checksums: sha256

@@ -97,13 +97,13 @@ class PublishVerificationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "YYYY.M.D.N"):
                 publish_release("../outside", _Runner(Path(temporary)))
 
-    def _sealed_release(self, releases: Path) -> Path:
-        release_id = "2026.9.21.1"
+    def _sealed_release(self, releases: Path, release_id: str = "2026.9.21.1",
+                        tag: str = "v{version}") -> Path:
         root = releases / release_id
         (root / "assets").mkdir(parents=True)
         config = {
             "schema": "openocean.release/v1",
-            "release": {"version": release_id, "title": "Field {version}"},
+            "release": {"version": release_id, "title": "Field {version}", "tag": tag},
             "sources": {},
             "products": {
                 "native": {"enabled": False, "platforms": [], "families": []},
@@ -168,6 +168,17 @@ class PublishVerificationTest(unittest.TestCase):
             f"{sha256_file(path)}  {path.name}\n" for path in checksum_paths),
             encoding="utf-8")
         return root
+
+    def test_publish_uses_the_tag_from_the_sealed_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            root = self._sealed_release(releases, "1.0.0", "OpenOcean-Field-V{version}")
+            with mock.patch.dict(os.environ, {"TEST_GITHUB_TOKEN": "token"}), \
+                    mock.patch("openocean_release.orchestrator.create_public_release") as create:
+                publish_release("1.0.0", _Runner(releases))
+                self.assertEqual(create.call_args.kwargs["tag"], "OpenOcean-Field-V1.0.0")
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["publishedTag"], "OpenOcean-Field-V1.0.0")
 
     def test_publish_rechecks_the_complete_sealed_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
