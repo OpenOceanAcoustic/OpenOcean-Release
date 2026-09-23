@@ -5,6 +5,12 @@ OpenOcean Field product family. A build resolves every source ref to a commit,
 runs the complete selected platform and ABI matrix, and seals immutable local
 artifacts. Publication is a separate explicit operation.
 
+The current release is `OpenOcean-Field-V1.0.0`: six Windows native SDKs,
+Windows/Linux CPython 3.10–3.14 wheel bundles, and a Windows MATLAB Toolbox.
+The MATLAB and Python builders cover ten backends, including WI (OAST) and
+Couple. Linux native libraries are available by contacting the address in the
+[release notes](docs/releases/openocean-field-v1.0.0.md).
+
 ```bash
 export OPENOCEAN_RUNNER_CONFIG="$HOME/.config/openocean/runner.yaml"
 export OOA_FIELD_READ_TOKEN=...

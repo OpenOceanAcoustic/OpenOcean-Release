@@ -1,0 +1,7 @@
+# Reuse the provisioned wheel interpreters and Eigen headers; no download is needed.
+ARG DEPENDENCIES_IMAGE=openocean/ci-dist@sha256:c5097573d6b8a6effd9f7426461cb5f642fea2aab116dc662085f23a971cee03
+ARG WHEEL_IMAGE=openocean/ci-wheel@sha256:ca93b68104a828f8a78b4564ac94f29ea420da6d087e35694f7951e177b6f69e
+FROM ${DEPENDENCIES_IMAGE} AS dependencies
+FROM ${WHEEL_IMAGE}
+COPY --from=dependencies /usr/include/eigen3/ /usr/include/eigen3/
+COPY --from=dependencies /usr/share/eigen3/ /usr/share/eigen3/

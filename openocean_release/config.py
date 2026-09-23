@@ -35,8 +35,8 @@ TARGET_PRODUCTS = {
     "matlab": ("matlab", "windows-x86_64"),
 }
 SUPPORTED_PYTHONS = {"cp310", "cp311", "cp312", "cp313", "cp314"}
-REQUIRED_SOURCES = ("field_core", "ray_mode", "normal_mode", "pe", "toolbox")
-NATIVE_FAMILIES = ("field_core", "ray_mode", "normal_mode", "pe")
+REQUIRED_SOURCES = ("field_core", "ray_mode", "normal_mode", "pe", "toolbox", "wi", "couple")
+NATIVE_FAMILIES = ("field_core", "ray_mode", "normal_mode", "pe", "wi", "couple")
 BACKENDS = (
     "ray_mode.bellhop.2d",
     "ray_mode.bellhop.3d",
@@ -46,12 +46,30 @@ BACKENDS = (
     "pe.ram",
     "pe.ramgeo",
     "pe.rams",
+    "wi.oast",
+    "couple",
 )
-VERSION_RE = re.compile(r"^[1-9][0-9]*\.[0-9]+\.[0-9]+\.[1-9][0-9]*$")
+VERSION_RE = re.compile(r"^(?:[1-9][0-9]*\.[0-9]+\.[0-9]+\.[1-9][0-9]*|(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))$")
 
 
 class ConfigurationError(ValueError):
     """Raised when a release contract cannot be satisfied."""
+
+
+def release_tag(template: Any, version: str) -> str:
+    if not isinstance(template, str):
+        raise ConfigurationError("release.tag must be a string")
+    try:
+        fields = {name for _, name, spec, conversion in string.Formatter().parse(template) if name is not None}
+        if fields - {"version"}:
+            raise ValueError("unsupported placeholder")
+        tag = template.format(version=version)
+    except (ValueError, KeyError, IndexError, AttributeError) as error:
+        raise ConfigurationError("release.tag supports only the {version} placeholder") from error
+    if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", tag)
+            or ".." in tag or tag.endswith((".", ".lock"))):
+        raise ConfigurationError("release.tag must be a safe Git tag name")
+    return tag
 
 
 def _mapping(value: Any, label: str) -> dict[str, Any]:
@@ -133,13 +151,14 @@ class ReleaseConfig:
             raise ConfigurationError(f"schema must be {RELEASE_SCHEMA}")
 
         release = _mapping(document.get("release"), "release")
-        _keys(release, {"version", "profile", "title", "notes"}, "release")
+        _keys(release, {"version", "profile", "title", "notes", "tag"}, "release")
         profile = profile_override or str(release.get("profile", "full"))
         if profile not in SUPPORTED_PROFILES:
             raise ConfigurationError(f"unsupported profile: {profile}")
         version = version_override or str(release.get("version", "auto"))
         if version != "auto" and not VERSION_RE.fullmatch(version):
-            raise ConfigurationError("release.version must be auto or YYYY.M.D.N")
+            raise ConfigurationError("release.version must be auto, X.Y.Z or YYYY.M.D.N")
+        release_tag(release.get("tag", "v{version}"), "1.0.0" if version == "auto" else version)
         title = release.get("title", "OpenOcean Field {version}")
         if not isinstance(title, str) or not title.strip():
             raise ConfigurationError("release.title must be a nonempty string")
@@ -186,8 +205,6 @@ class ReleaseConfig:
                 raise ConfigurationError(f"sources.{name}.ref must not be empty")
             if not isinstance(enabled, bool):
                 raise ConfigurationError(f"sources.{name}.enabled must be boolean")
-            if name in {"wi", "couple"} and enabled:
-                raise ConfigurationError(f"{name} release adapter not implemented")
             sources[name] = Source(name, repository, ref, enabled)
         if overrides:
             raise ConfigurationError(f"unknown --ref sources: {', '.join(sorted(overrides))}")
@@ -267,7 +284,7 @@ class ReleaseConfig:
         if selection.python and (set(python_platforms) - SUPPORTED_PLATFORMS):
             raise ConfigurationError("python contains unsupported platforms")
         if selection.native and tuple(native_families) != NATIVE_FAMILIES:
-            raise ConfigurationError("native.families must contain field_core, ray_mode, normal_mode, pe in order")
+            raise ConfigurationError("native.families must contain field_core, ray_mode, normal_mode, pe, wi, couple in order")
         if selection.native and native.get("linkage") != ["shared", "static"]:
             raise ConfigurationError("native.linkage must be [shared, static]")
         if selection.native and native.get("standalone_executables") is not True:
@@ -300,7 +317,7 @@ class ReleaseConfig:
             raise ConfigurationError(
                 "field_runner requires a Python or MATLAB product so its two-platform gate runs")
         if tuple(runner.get("backends", ())) != BACKENDS:
-            raise ConfigurationError("FieldRunner must contain the fixed eight-backend contract")
+            raise ConfigurationError("FieldRunner must contain the fixed ten-backend contract")
 
         output = _mapping(document.get("output"), "output")
         _keys(output, {"checksums", "include_lock_file", "include_manifest", "include_test_summary", "include_raw_logs"}, "output")

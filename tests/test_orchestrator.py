@@ -82,6 +82,20 @@ class MatlabPreflightContractTest(unittest.TestCase):
 
 
 class WindowsNativeToolchainContractTest(unittest.TestCase):
+    def test_failed_vm_status_never_starts_or_stops_the_guest(self) -> None:
+        orchestrator = object.__new__(Orchestrator)
+        orchestrator.vm_was_running = None
+        orchestrator.runner = mock.Mock()
+        orchestrator.runner.section.return_value = {"vm_controller": "vmctl.py"}
+        orchestrator.logger = mock.Mock()
+        with mock.patch("openocean_release.orchestrator.subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=1, stdout="permission denied")
+            with self.assertRaisesRegex(RuntimeError, "cannot determine Windows VM state"):
+                orchestrator._ensure_vm()
+        orchestrator._restore_vm()
+        self.assertIsNone(orchestrator.vm_was_running)
+        orchestrator.logger.command.assert_not_called()
+
     def test_cmake_is_available_to_nested_windows_tests(self) -> None:
         source = (ROOT / "openocean_release" / "orchestrator.py").read_text(
             encoding="utf-8")
@@ -97,18 +111,18 @@ class PublishVerificationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "YYYY.M.D.N"):
                 publish_release("../outside", _Runner(Path(temporary)))
 
-    def _sealed_release(self, releases: Path) -> Path:
-        release_id = "2026.9.21.1"
+    def _sealed_release(self, releases: Path, release_id: str = "2026.9.21.1",
+                        tag: str = "v{version}", *, matlab: bool = False) -> Path:
         root = releases / release_id
         (root / "assets").mkdir(parents=True)
         config = {
             "schema": "openocean.release/v1",
-            "release": {"version": release_id, "title": "Field {version}"},
+            "release": {"version": release_id, "title": "Field {version}", "tag": tag},
             "sources": {},
             "products": {
                 "native": {"enabled": False, "platforms": [], "families": []},
                 "python": {"enabled": False, "platforms": [], "versions": []},
-                "matlab": {"enabled": False},
+                "matlab": {"enabled": matlab},
                 "field_runner": {"enabled": False},
             },
         }
@@ -125,6 +139,12 @@ class PublishVerificationTest(unittest.TestCase):
                 }
             },
         }
+        if matlab:
+            for name in ("windows.stage-sources", "windows.matlab"):
+                state["tasks"][name] = {
+                    "status": "succeeded", "inputSha256": "0" * 64,
+                    "outputs": {},
+                }
         (root / "state.json").write_text(
             json.dumps(state), encoding="utf-8")
         summary = {
@@ -132,15 +152,24 @@ class PublishVerificationTest(unittest.TestCase):
             "releaseId": release_id,
             "status": "passed",
             "failed": [],
-            "tasks": {"resolve": {"status": "succeeded"}},
+            "tasks": {name: {"status": "succeeded"} for name in state["tasks"]},
         }
         summary_path = root / "test-summary.json"
         summary_path.write_text(json.dumps(summary), encoding="utf-8")
         manifest_path = root / "manifest.json"
+        assets = []
+        if matlab:
+            asset = root / "assets" / f"OpenOcean-Field-Toolbox-{release_id}-win64.zip"
+            asset.write_bytes(b"toolbox archive with mltbx and reference cases")
+            assets.append(asset)
         manifest_path.write_text(json.dumps({
             "schema": "openocean.release-manifest/v1",
             "releaseId": release_id,
-            "files": [],
+            "files": [
+                {"path": asset.name, "type": "matlab", "platform": "windows-x86_64",
+                 "bytes": asset.stat().st_size, "sha256": sha256_file(asset)}
+                for asset in assets
+            ],
         }), encoding="utf-8")
         lock_path = root / "release-lock.yaml"
         lock_path.write_text(yaml.safe_dump({
@@ -154,7 +183,8 @@ class PublishVerificationTest(unittest.TestCase):
             "sources": {},
             "matrix": {
                 "nativePlatforms": [], "pythonPlatforms": [],
-                "pythonVersions": [], "matlabPlatform": None,
+                "pythonVersions": [],
+                "matlabPlatform": "windows-x86_64" if matlab else None,
                 "fieldRunnerBackends": [],
             },
         }), encoding="utf-8")
@@ -163,11 +193,33 @@ class PublishVerificationTest(unittest.TestCase):
         # release-notes.md is the Release body, not an uploaded asset, so it is
         # deliberately outside the checksum set. release-config.yaml is inside it:
         # the lock publishes configSha256 and consumers need the file to verify it.
-        checksum_paths = (config_path, lock_path, manifest_path, summary_path)
+        checksum_paths = (config_path, lock_path, manifest_path, summary_path, *assets)
         (root / "SHA256SUMS").write_text("".join(
             f"{sha256_file(path)}  {path.name}\n" for path in checksum_paths),
             encoding="utf-8")
         return root
+
+    def test_publish_accepts_the_matlab_zip_with_reference_cases(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            root = self._sealed_release(releases, "1.0.0", matlab=True)
+            with mock.patch("openocean_release.orchestrator.create_public_release") as create:
+                publish_release("1.0.0", _Runner(releases))
+            self.assertIn(
+                root / "assets" / "OpenOcean-Field-Toolbox-1.0.0-win64.zip",
+                create.call_args.kwargs["assets"],
+            )
+
+    def test_publish_uses_the_tag_from_the_sealed_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            root = self._sealed_release(releases, "1.0.0", "OpenOcean-Field-V{version}")
+            with mock.patch.dict(os.environ, {"TEST_GITHUB_TOKEN": "token"}), \
+                    mock.patch("openocean_release.orchestrator.create_public_release") as create:
+                publish_release("1.0.0", _Runner(releases))
+                self.assertEqual(create.call_args.kwargs["tag"], "OpenOcean-Field-V1.0.0")
+            state = json.loads((root / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["publishedTag"], "OpenOcean-Field-V1.0.0")
 
     def test_publish_rechecks_the_complete_sealed_contract(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
