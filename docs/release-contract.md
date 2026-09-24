@@ -66,3 +66,12 @@ The wheel image can reuse the provisioned Eigen headers with
 `tools/Dockerfile.wheel-eigen`. Its two base image digests are pinned; when
 building offline with local tag overrides, verify those digests first. Record
 the resulting immutable image digest in the private runner configuration.
+
+For the requested V1.0.0 Toolbox refresh, `refresh-toolbox-build` uses an
+isolated release directory and the `matlab` profile. After that build seals with
+all tests passing, `refresh-toolbox-publish` replaces only the Toolbox ZIP,
+`manifest.json`, and `SHA256SUMS` on the existing Release. The manifest's
+Toolbox entry records the new source commit and validation workflow run. The
+original release lock, configuration, and test summary remain the historical
+record for the other eight product archives. The normal `publish` command still
+refuses to overwrite an existing tag or Release.

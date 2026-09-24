@@ -8,7 +8,7 @@ on:
         required: true
         default: build
         type: choice
-        options: [preflight, build, publish]
+        options: [preflight, build, publish, refresh-toolbox-build, refresh-toolbox-publish]
       release_id:
         description: Existing sealed release ID for publish or resume
         required: false
@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   build:
-    if: inputs.command != 'publish'
+    if: inputs.command == 'preflight' || inputs.command == 'build'
     runs-on: [self-hosted, Linux, X64, openocean-release]
     timeout-minutes: 1440
     env:
@@ -84,6 +84,82 @@ jobs:
             done
           fi
           python3 main.py "${arguments[@]}"
+  refresh-toolbox-build:
+    if: inputs.command == 'refresh-toolbox-build'
+    runs-on: [self-hosted, Linux, X64, openocean-release]
+    timeout-minutes: 1440
+    env:
+      OPENOCEAN_RUNNER_CONFIG: ${{ vars.OPENOCEAN_RUNNER_CONFIG }}
+      OOA_FIELD_READ_TOKEN: ${{ secrets.OOA_FIELD_READ_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install orchestrator dependencies
+        shell: bash
+        run: |
+          tools_root="${RUNNER_TEMP}/openocean-release-tools"
+          python3 -m venv "${tools_root}"
+          "${tools_root}/bin/python" -m pip install --requirement requirements.txt
+          printf '%s\n' "${tools_root}/bin" >> "${GITHUB_PATH}"
+      - name: Build and test only the 1.0.0 Toolbox ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          private_config="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
+          isolated_config="${RUNNER_TEMP}/toolbox-refresh-runner.yaml"
+          python3 - "$private_config" "$isolated_config" "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" <<'PYCODE'
+          from pathlib import Path
+          import sys
+          import yaml
+          original = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          original["storage"]["releases"] = str(
+              Path(original["storage"]["releases"]) / "toolbox-refresh" / sys.argv[3])
+          Path(sys.argv[2]).write_text(yaml.safe_dump(original), encoding="utf-8")
+          PYCODE
+          python3 main.py build -c release.yaml --profile matlab --version 1.0.0 \
+            --runner-config "$isolated_config"
+          asset_dir="$(python3 - "$isolated_config" <<'PYCODE'
+          from pathlib import Path
+          import sys
+          import yaml
+          config = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print(Path(config["storage"]["releases"]) / "1.0.0" / "assets")
+          PYCODE
+          )"
+          sha256sum "$asset_dir/OpenOcean-Field-Toolbox-1.0.0-win64.zip"
+  refresh-toolbox-publish:
+    if: inputs.command == 'refresh-toolbox-publish'
+    runs-on: [self-hosted, Linux, X64, openocean-release]
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      OPENOCEAN_RUNNER_CONFIG: ${{ vars.OPENOCEAN_RUNNER_CONFIG }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_BUILD_RUN: ${{ inputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install orchestrator dependencies
+        shell: bash
+        run: |
+          tools_root="${RUNNER_TEMP}/openocean-release-tools"
+          python3 -m venv "${tools_root}"
+          "${tools_root}/bin/python" -m pip install --requirement requirements.txt
+          printf '%s\n' "${tools_root}/bin" >> "${GITHUB_PATH}"
+      - name: Replace only the Toolbox asset and its hash metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_BUILD_RUN"
+          private_config="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
+          python3 -m tools.refresh_toolbox_asset \
+            --build-run "$RELEASE_BUILD_RUN" \
+            --runner-config "$private_config"
   publish:
     if: inputs.command == 'publish'
     runs-on: [self-hosted, Linux, X64, openocean-release]
