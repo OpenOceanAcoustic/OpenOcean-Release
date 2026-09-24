@@ -1,11 +1,11 @@
 schema: openocean.release/v1
 
 release:
-  version: 1.0.0
+  version: 1.0.1
   tag: "OpenOcean-Field-V{version}"
   profile: full
   title: "OpenOcean-Field-V{version}"
-  notes: docs/releases/openocean-field-v1.0.0.md
+  notes: docs/releases/openocean-field-v1.0.1.md
 
 # Refs are pinned to the exact commits this release is validated at. Using
 # `main` here makes the published code drift away from whatever was last
@@ -27,7 +27,7 @@ sources:
     ref: b9efda4bc1c09de6a00d80d9dcaabe1dda06433d
   toolbox:
     repository: OpenOceanAcoustic/OpenOcean-Field-Toolbox
-    ref: e7ea5af3a592e2dd2314d605c2df137093319eac
+    ref: 41edf7e0a91f09e9b77316eca61c194940bab34d
   wi:
     repository: OpenOceanAcoustic/OpenOcean-Field-WI
     ref: 5028741e9827729cd1b8394da545843c141ea627
