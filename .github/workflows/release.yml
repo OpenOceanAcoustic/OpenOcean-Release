@@ -8,7 +8,7 @@ on:
         required: true
         default: build
         type: choice
-        options: [preflight, build, publish, refresh-toolbox-build]
+        options: [preflight, build, publish, refresh-toolbox-build, refresh-toolbox-publish]
       release_id:
         description: Existing sealed release ID for publish or resume
         required: false
@@ -129,6 +129,37 @@ jobs:
           PYCODE
           )"
           sha256sum "$asset_dir/OpenOcean-Field-Toolbox-1.0.0-win64.zip"
+  refresh-toolbox-publish:
+    if: inputs.command == 'refresh-toolbox-publish'
+    runs-on: [self-hosted, Linux, X64, openocean-release]
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      OPENOCEAN_RUNNER_CONFIG: ${{ vars.OPENOCEAN_RUNNER_CONFIG }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_BUILD_RUN: ${{ inputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install orchestrator dependencies
+        shell: bash
+        run: |
+          tools_root="${RUNNER_TEMP}/openocean-release-tools"
+          python3 -m venv "${tools_root}"
+          "${tools_root}/bin/python" -m pip install --requirement requirements.txt
+          printf '%s\n' "${tools_root}/bin" >> "${GITHUB_PATH}"
+      - name: Replace only the Toolbox asset and its hash metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_BUILD_RUN"
+          private_config="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
+          python3 -m tools.refresh_toolbox_asset \
+            --build-run "$RELEASE_BUILD_RUN" \
+            --runner-config "$private_config"
   publish:
     if: inputs.command == 'publish'
     runs-on: [self-hosted, Linux, X64, openocean-release]
