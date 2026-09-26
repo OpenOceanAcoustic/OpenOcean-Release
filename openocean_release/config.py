@@ -18,7 +18,7 @@ import yaml
 RELEASE_SCHEMA = "openocean.release/v1"
 RUNNER_SCHEMA = "openocean.runner/v1"
 LOCK_SCHEMA = "openocean.release-lock/v1"
-SUPPORTED_PROFILES = {"full", "native", "python", "matlab"}
+SUPPORTED_PROFILES = {"full", "native", "python", "matlab", "custom"}
 SUPPORTED_PLATFORMS = {"linux-x86_64", "windows-x86_64"}
 SUPPORTED_TARGETS = (
     "linux-native",
@@ -126,6 +126,7 @@ class ReleaseConfig:
     profile: str
     title: str
     notes: str
+    notes_text: str | None
     sources: dict[str, Source]
     products: ProductSelection
     native_platforms: tuple[str, ...]
@@ -141,17 +142,21 @@ class ReleaseConfig:
         *,
         profile_override: str | None = None,
         version_override: str | None = None,
+        notes_text_override: str | None = None,
         ref_overrides: Mapping[str, str] | None = None,
         targets: tuple[str, ...] = (),
+        document_override: Mapping[str, Any] | None = None,
     ) -> "ReleaseConfig":
         path = path.resolve()
-        document = load_yaml(path)
-        _keys(document, {"schema", "release", "sources", "products", "output"}, "release config")
+        document = deepcopy(dict(document_override)) if document_override is not None else load_yaml(path)
+        _keys(document, {"schema", "release", "sources", "products", "output", "verification"}, "release config")
         if document.get("schema") != RELEASE_SCHEMA:
             raise ConfigurationError(f"schema must be {RELEASE_SCHEMA}")
 
         release = _mapping(document.get("release"), "release")
-        _keys(release, {"version", "profile", "title", "notes", "tag"}, "release")
+        _keys(release, {"version", "profile", "title", "notes", "notes_text", "tag", "plan_kind"}, "release")
+        if release.get("plan_kind") not in (None, "preview", "release"):
+            raise ConfigurationError("release.plan_kind must be preview or release")
         profile = profile_override or str(release.get("profile", "full"))
         if profile not in SUPPORTED_PROFILES:
             raise ConfigurationError(f"unsupported profile: {profile}")
@@ -172,9 +177,15 @@ class ReleaseConfig:
         if title_fields - {"version"}:
             raise ConfigurationError(
                 "release.title supports only the {version} placeholder")
-        notes = release.get("notes", "auto")
+        notes = "auto" if notes_text_override is not None else release.get("notes", "auto")
         if not isinstance(notes, str) or not notes.strip():
             raise ConfigurationError("release.notes must be auto or a Markdown path")
+        notes_text = notes_text_override if notes_text_override is not None else release.get("notes_text")
+        if notes_text is not None:
+            if not isinstance(notes_text, str) or not notes_text.strip():
+                raise ConfigurationError("release.notes_text must contain nonempty Markdown")
+            if notes != "auto":
+                raise ConfigurationError("release.notes must be auto when release.notes_text is set")
         if notes != "auto":
             notes_path = Path(notes)
             resolved_notes = (path.parent / notes_path).resolve()
@@ -211,9 +222,6 @@ class ReleaseConfig:
         missing = [name for name in REQUIRED_SOURCES if name not in sources]
         if missing:
             raise ConfigurationError(f"missing required sources: {', '.join(missing)}")
-        disabled = [name for name in REQUIRED_SOURCES if not sources[name].enabled]
-        if disabled:
-            raise ConfigurationError(f"required sources are disabled: {', '.join(disabled)}")
 
         product_values = _mapping(document.get("products"), "products")
         _keys(product_values, {"native", "python", "matlab", "field_runner"}, "products")
@@ -222,6 +230,7 @@ class ReleaseConfig:
             "native": (True, False, False),
             "python": (False, True, False),
             "matlab": (False, False, True),
+            "custom": (False, False, False),
         }[profile]
 
         native = _mapping(product_values.get("native", {}), "products.native")
@@ -253,6 +262,8 @@ class ReleaseConfig:
             enabled(matlab, profile_defaults[2]),
             enabled(runner, profile_defaults[1] or profile_defaults[2]),
         )
+        if not (selection.native or selection.python or selection.matlab):
+            raise ConfigurationError("select at least one native, Python, or MATLAB product")
         native_platforms = _strings(native.get("platforms", []), "products.native.platforms")
         python_platforms = _strings(python.get("platforms", []), "products.python.platforms")
         if targets:
@@ -281,16 +292,20 @@ class ReleaseConfig:
         native_families = _strings(native.get("families", []), "products.native.families")
         if selection.native and (set(native_platforms) - SUPPORTED_PLATFORMS):
             raise ConfigurationError("native contains unsupported platforms")
+        if selection.native and not native_platforms:
+            raise ConfigurationError("native release requires at least one supported platform")
         if selection.python and (set(python_platforms) - SUPPORTED_PLATFORMS):
             raise ConfigurationError("python contains unsupported platforms")
-        if selection.native and tuple(native_families) != NATIVE_FAMILIES:
-            raise ConfigurationError("native.families must contain field_core, ray_mode, normal_mode, pe, wi, couple in order")
+        if selection.native and (
+                not native_families
+                or tuple(name for name in NATIVE_FAMILIES if name in native_families) != native_families):
+            raise ConfigurationError("native.families must be a nonempty ordered subset of field_core, ray_mode, normal_mode, pe, wi, couple")
         if selection.native and native.get("linkage") != ["shared", "static"]:
             raise ConfigurationError("native.linkage must be [shared, static]")
         if selection.native and native.get("standalone_executables") is not True:
             raise ConfigurationError("native.standalone_executables must be true")
-        if selection.python and not targets and set(python_platforms) != SUPPORTED_PLATFORMS:
-            raise ConfigurationError("python release requires Linux and Windows x86_64")
+        if selection.python and not python_platforms:
+            raise ConfigurationError("python release requires at least one supported platform")
         if selection.python and set(python_versions) != SUPPORTED_PYTHONS:
             raise ConfigurationError("python release requires cp310 through cp314")
         if selection.python and (python.get("distribution") != "openocean-field" or python.get("import_package") != "openocean_field.sdk"):
@@ -316,6 +331,12 @@ class ReleaseConfig:
         if selection.field_runner and not (selection.python or selection.matlab):
             raise ConfigurationError(
                 "field_runner requires a Python or MATLAB product so its two-platform gate runs")
+        required_sources = set(REQUIRED_SOURCES) if (selection.python or selection.matlab) else (
+            set(native_families) if selection.native else set()
+        )
+        disabled_required = sorted(name for name in required_sources if not sources[name].enabled)
+        if disabled_required:
+            raise ConfigurationError(f"required sources are disabled: {', '.join(disabled_required)}")
         if tuple(runner.get("backends", ())) != BACKENDS:
             raise ConfigurationError("FieldRunner must contain the fixed ten-backend contract")
 
@@ -332,18 +353,25 @@ class ReleaseConfig:
             if output.get(key) != expected:
                 raise ConfigurationError(f"output.{key} must be {expected!r}")
 
+        if "verification" in document and not isinstance(document["verification"], Mapping):
+            raise ConfigurationError("verification must be a mapping")
         normalized = deepcopy(document)
         normalized["release"]["version"] = version
         normalized["release"]["profile"] = profile
+        if notes_text_override is not None:
+            normalized["release"]["notes"] = "auto"
+            normalized["release"]["notes_text"] = notes_text_override
         normalized["products"]["native"]["enabled"] = selection.native
+        normalized["products"]["native"]["platforms"] = list(native_platforms)
         normalized["products"]["python"]["enabled"] = selection.python
+        normalized["products"]["python"]["platforms"] = list(python_platforms)
         normalized["products"]["matlab"]["enabled"] = selection.matlab
         normalized["products"]["field_runner"]["enabled"] = selection.field_runner
         for name, source in sources.items():
             normalized["sources"][name]["ref"] = source.ref
         return cls(
             path, normalized, version, profile,
-            title, notes, sources, selection,
+            title, notes, notes_text, sources, selection,
             native_platforms, native_families, python_platforms, python_versions,
             str(matlab.get("test_release", "")),
         )
@@ -362,9 +390,12 @@ class RunnerConfig:
 
     @classmethod
     def load(cls, path: Path | None = None) -> "RunnerConfig":
+        default = Path.home() / ".config" / "openocean" / "runner.yaml"
         selected = path or (Path(os.environ["OPENOCEAN_RUNNER_CONFIG"]) if os.environ.get("OPENOCEAN_RUNNER_CONFIG") else None)
         if selected is None:
-            raise ConfigurationError("set OPENOCEAN_RUNNER_CONFIG to the private runner YAML")
+            selected = default if default.is_file() else None
+        if selected is None:
+            raise ConfigurationError("runner.yaml is needed only for server-side builds; daily plan and submit do not load it. The ci_server administrator maintains ~/.config/openocean/runner.yaml")
         selected = selected.expanduser().resolve()
         document = load_yaml(selected)
         _keys(
@@ -385,7 +416,7 @@ class RunnerConfig:
         if linux.get("engine") != "docker":
             raise ConfigurationError("runner.linux.engine must be docker")
         image = linux.get("image")
-        if not isinstance(image, str) or "@sha256:" not in image:
+        if not isinstance(image, str) or (image and "@sha256:" not in image):
             raise ConfigurationError("runner.linux.image must use an immutable @sha256 digest")
         windows = _mapping(document["windows"], "runner.windows")
         _keys(windows, {
