@@ -40,6 +40,31 @@ class GitHub:
             raise RuntimeError(f"GitHub returned an invalid SHA for {repository}@{ref}")
         return sha
 
+    def require_read_permission(self, repository: str, actor: str) -> None:
+        from urllib.parse import quote
+        value = self._request(f"/repos/{repository}/collaborators/{quote(actor, safe='')}/permission")
+        if not isinstance(value, dict) or value.get("permission") not in {"read", "triage", "write", "maintain", "admin"}:
+            raise RuntimeError(f"{actor} has no confirmed read permission for {repository}")
+
+    def successful_workflow_run(self, repository: str, workflow: str, sha: str) -> str:
+        from urllib.parse import quote
+        response = self._request(
+            f"/repos/{repository}/actions/workflows/{quote(workflow, safe='')}/runs"
+            f"?head_sha={sha}&per_page=100")
+        runs = response.get("workflow_runs") if isinstance(response, dict) else None
+        if not isinstance(runs, list):
+            raise RuntimeError(f"cannot read CI runs for {repository}/{workflow}@{sha}")
+        matching = [run for run in runs if isinstance(run, dict) and run.get("head_sha") == sha]
+        if not matching:
+            raise RuntimeError(f"no CI run for {repository}/{workflow}@{sha}")
+        latest = max(matching, key=lambda run: (str(run.get("created_at", "")), int(run.get("run_attempt") or 0), int(run.get("id") or 0)))
+        if latest.get("status") != "completed" or latest.get("conclusion") != "success":
+            raise RuntimeError(f"CI is not successful for {repository}/{workflow}@{sha}: {latest.get('html_url', 'unknown run')}")
+        url = latest.get("html_url")
+        if not isinstance(url, str) or not url.startswith(f"https://github.com/{repository}/actions/runs/"):
+            raise RuntimeError("CI returned an invalid run URL")
+        return url
+
     def tags(self, repository: str) -> tuple[str, ...]:
         values = self._request(f"/repos/{repository}/tags?per_page=100")
         if not isinstance(values, list):

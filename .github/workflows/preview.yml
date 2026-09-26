@@ -1,0 +1,36 @@
+name: OpenOcean preview build
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: Validated request from main.py submit preview
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: openocean-build-server
+  cancel-in-progress: false
+jobs:
+  preview:
+    runs-on: [self-hosted, Linux, X64, openocean-release]
+    timeout-minutes: 1440
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install orchestrator dependencies
+        shell: bash
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/openocean-release-tools"
+          "${RUNNER_TEMP}/openocean-release-tools/bin/python" -m pip install -r requirements.txt
+      - name: Build preview
+        shell: bash
+        env:
+          OPENOCEAN_RELEASE_REQUEST: ${{ inputs.request }}
+          OPENOCEAN_RUNNER_CONFIG: ${{ vars.OPENOCEAN_RUNNER_CONFIG }}
+          OOA_FIELD_READ_TOKEN: ${{ secrets.OOA_FIELD_READ_TOKEN }}
+        run: |
+          export OPENOCEAN_RUNNER_CONFIG="${OPENOCEAN_RUNNER_CONFIG:-$HOME/.config/openocean/runner.yaml}"
+          "${RUNNER_TEMP}/openocean-release-tools/bin/python" main.py run-request preview

@@ -254,9 +254,9 @@ class Orchestrator:
                     errors.append(
                         "pinned Linux image lacks CMake, Ninja, or the CPython "
                         "3.10-3.14 /opt/python matrix")
-        if self.release.products.matlab or "windows-x86_64" in (
-            self.release.native_platforms + self.release.python_platforms
-        ):
+        if (self.release.products.matlab
+                or (self.release.products.native and "windows-x86_64" in self.release.native_platforms)
+                or (self.release.products.python and "windows-x86_64" in self.release.python_platforms)):
             windows = self.runner.section("windows")
             windows_ready = True
             for key in ("vm_controller", "powershell_runner"):
@@ -368,7 +368,13 @@ class Orchestrator:
                 if not source.enabled:
                     continue
                 self.logger.event("resolve", "INFO", f"resolving {source.repository}@{source.ref}")
-                self.resolved_sources[name] = self.github.resolve_ref(source.repository, source.ref)
+                sha = self.github.resolve_ref(source.repository, source.ref)
+                verification = self.release.document.get("verification", {})
+                if verification:
+                    expected = verification["sources"][name]["sha"]
+                    if sha != expected:
+                        raise RuntimeError(f"source SHA changed after CI verification: {name}")
+                self.resolved_sources[name] = sha
             lock_path.write_text(json.dumps(self.resolved_sources, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
         self._run_task(
@@ -939,10 +945,10 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
                     expected_assets.add(
                         f"{base}-{self.release_id}-windows-x86_64.zip")
         if self.release.products.python:
-            expected_assets.update({
-                f"OpenOcean-Field-Python-{self.release_id}-linux-x86_64.tar.gz",
-                f"OpenOcean-Field-Python-{self.release_id}-windows-x86_64.zip",
-            })
+            if "linux-x86_64" in self.release.python_platforms:
+                expected_assets.add(f"OpenOcean-Field-Python-{self.release_id}-linux-x86_64.tar.gz")
+            if "windows-x86_64" in self.release.python_platforms:
+                expected_assets.add(f"OpenOcean-Field-Python-{self.release_id}-windows-x86_64.zip")
         if self.release.products.matlab:
             expected_assets.add(
                 f"OpenOcean-Field-Toolbox-{self.release_id}-win64.zip")
@@ -984,7 +990,9 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
             "files": files,
         }
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        if self.release.notes == "auto":
+        if self.release.notes_text is not None:
+            notes_path.write_text(self.release.notes_text.rstrip() + "\n", encoding="utf-8")
+        elif self.release.notes == "auto":
             # The guide goes first: it is what a visitor needs before the commit
             # list. Only for auto notes -- a hand-written notes file is the
             # author's, and gets published as given.
@@ -993,7 +1001,7 @@ if ($LASTEXITCODE -ne 0) {{ throw 'MATLAB release adapter failed' }}
         else:
             source = (self.release.path.parent / self.release.notes).resolve()
             shutil.copy2(source, notes_path)
-        for path in (config_path, lock_path, manifest_path, summary_path):
+        for path in (config_path, lock_path, manifest_path, summary_path, notes_path):
             checksum_lines.append(f"{sha256_file(path)}  {path.name}")
         checksums_path.write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
         # Keep every sealed file group-readable. Assets arrive by different routes
@@ -1325,6 +1333,24 @@ def publish_release(
                 or locked.get("requestedRef") != configured.get("ref")
                 or not re.fullmatch(r"[0-9a-f]{40}", str(locked.get("commit", "")))):
             raise RuntimeError(f"release lock source is invalid: {name}")
+    plan_kind = release_values.get("plan_kind")
+    if plan_kind == "preview":
+        raise RuntimeError("a preview seal cannot be published")
+    if plan_kind == "release":
+        verification = snapshot.get("verification")
+        if (not isinstance(verification, Mapping)
+                or verification.get("ciRequired") is not True
+                or not isinstance(verification.get("sources"), Mapping)
+                or set(verification["sources"]) != expected_source_names):
+            raise RuntimeError("sealed release has no complete CI verification")
+        from .request_runner import CI_WORKFLOWS
+        for name in expected_source_names:
+            checked = verification["sources"][name]
+            if (not isinstance(checked, Mapping)
+                    or checked.get("sha") != locked_sources[name]["commit"]
+                    or checked.get("repository") != locked_sources[name]["repository"]
+                    or set(checked.get("workflows", {})) != set(CI_WORKFLOWS[name])):
+                raise RuntimeError(f"sealed CI verification differs from source lock: {name}")
     expected_matrix = {
         "nativePlatforms": native_platforms if native_enabled else [],
         "pythonPlatforms": python_platforms if python_enabled else [],
@@ -1386,6 +1412,12 @@ def publish_release(
             raise RuntimeError(f"SHA256SUMS contains a duplicate path: {parts[1]}")
         checksum_entries[parts[1]] = parts[0]
     checked_paths = assets + [config_path, lock_path, manifest_path, summary_path]
+    # Releases sealed by the older format did not checksum the Markdown body.
+    # New inline notes must be sealed; retain read compatibility for old locks.
+    if notes_path.name in checksum_entries:
+        checked_paths.append(notes_path)
+    elif release_values.get("notes_text") is not None:
+        raise RuntimeError("SHA256SUMS is missing the sealed release notes")
     expected_checksum_names = {path.name for path in checked_paths}
     if set(checksum_entries) != expected_checksum_names:
         raise RuntimeError("SHA256SUMS file set differs from the sealed release")
