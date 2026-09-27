@@ -112,7 +112,8 @@ class PublishVerificationTest(unittest.TestCase):
                 publish_release("../outside", _Runner(Path(temporary)))
 
     def _sealed_release(self, releases: Path, release_id: str = "2026.9.21.1",
-                        tag: str = "v{version}", *, matlab: bool = False) -> Path:
+                        tag: str = "v{version}", *, matlab: bool = False,
+                        plan_kind: str | None = None) -> Path:
         root = releases / release_id
         (root / "assets").mkdir(parents=True)
         config = {
@@ -126,6 +127,8 @@ class PublishVerificationTest(unittest.TestCase):
                 "field_runner": {"enabled": False},
             },
         }
+        if plan_kind is not None:
+            config["release"]["plan_kind"] = plan_kind
         config_path = root / "release-config.yaml"
         config_path.write_text(yaml.safe_dump(config, sort_keys=True), encoding="utf-8")
         state = {
@@ -190,14 +193,28 @@ class PublishVerificationTest(unittest.TestCase):
         }), encoding="utf-8")
         notes_path = root / "release-notes.md"
         notes_path.write_text("release notes\n", encoding="utf-8")
-        # release-notes.md is the Release body, not an uploaded asset, so it is
-        # deliberately outside the checksum set. release-config.yaml is inside it:
-        # the lock publishes configSha256 and consumers need the file to verify it.
-        checksum_paths = (config_path, lock_path, manifest_path, summary_path, *assets)
+        # Release notes are the public body and must not change after sealing.
+        checksum_paths = (config_path, lock_path, manifest_path, summary_path, notes_path, *assets)
         (root / "SHA256SUMS").write_text("".join(
             f"{sha256_file(path)}  {path.name}\n" for path in checksum_paths),
             encoding="utf-8")
         return root
+
+    def test_preview_seal_cannot_be_published(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            self._sealed_release(releases, plan_kind="preview")
+            with mock.patch("openocean_release.orchestrator.create_public_release") as create:
+                with self.assertRaisesRegex(RuntimeError, "preview seal cannot be published"):
+                    publish_release("2026.9.21.1", _Runner(releases))
+                create.assert_not_called()
+
+    def test_new_release_requires_sealed_ci_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            self._sealed_release(releases, plan_kind="release")
+            with self.assertRaisesRegex(RuntimeError, "no complete CI verification"):
+                publish_release("2026.9.21.1", _Runner(releases))
 
     def test_publish_accepts_the_matlab_zip_with_reference_cases(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -209,6 +226,27 @@ class PublishVerificationTest(unittest.TestCase):
                 root / "assets" / "OpenOcean-Field-Toolbox-1.0.0-win64.zip",
                 create.call_args.kwargs["assets"],
             )
+
+    def test_publish_rejects_release_notes_changed_after_sealing(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            root = self._sealed_release(releases)
+            (root / "release-notes.md").write_text("changed notes\n", encoding="utf-8")
+            with self.assertRaisesRegex(RuntimeError, "SHA256SUMS mismatch: release-notes.md"):
+                publish_release("2026.9.21.1", _Runner(releases))
+
+    def test_publish_accepts_older_sealed_checksum_format(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            releases = Path(temporary)
+            root = self._sealed_release(releases)
+            checksums = root / "SHA256SUMS"
+            checksums.write_text(
+                "\n".join(line for line in checksums.read_text(encoding="utf-8").splitlines()
+                          if not line.endswith("  release-notes.md")) + "\n",
+                encoding="utf-8",
+            )
+            with mock.patch("openocean_release.orchestrator.create_public_release"):
+                publish_release("2026.9.21.1", _Runner(releases))
 
     def test_publish_uses_the_tag_from_the_sealed_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

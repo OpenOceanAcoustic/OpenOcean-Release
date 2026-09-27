@@ -1,7 +1,12 @@
 # Python Toolbox API parity candidate
 
-This updates the source pins for the next package build. It does **not** replace
-assets in the published `OpenOcean-Field-V1.0.0` release or move that tag.
+This records the Python Toolbox API parity candidate validated on 2026-09-23.
+Its FieldCore and Toolbox source pins are already included in
+[`DEFAULT_REFS`](../../openocean_release/defaults.py) and the
+[Python plan example](../../release.local.example.py). Operators select source
+refs in `release.local.py`; the former root `release.yaml` is no longer used.
+This note does **not** replace assets in the published `OpenOcean-Field-V1.0.0`
+release or move that tag.
 
 Validated sources:
 

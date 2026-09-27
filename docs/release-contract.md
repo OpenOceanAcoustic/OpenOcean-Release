@@ -5,7 +5,9 @@ Toolbox. The unified runtime registers ten backends, including `wi.oast` and
 `couple`. Every model family supplies a native SDK and Python provider; WI and
 Couple are also accessible through the MATLAB and Python Toolbox builders.
 
-Every build resolves source refs to immutable commit SHAs before checkout. The
+Every build resolves source refs to immutable commit SHAs before checkout. Formal
+builds also check the triggering user's access to each required private source
+and successful CI workflows at those exact SHAs. The
 sealed directory under `storage.releases/<release-id>` contains:
 
 ```text
@@ -24,7 +26,7 @@ logs/
 a task when both match. `--rebuild TASK` invalidates that task explicitly.
 Logs stay on the runner and are never attached to the GitHub Release.
 
-The checked-in 1.0.0 full profile produces six Windows native packages,
+The legacy 1.0.0 full profile produces six Windows native packages,
 one Python SDK bundle for each of Linux and Windows, and one Windows MATLAB
 bundle: nine product assets. Linux native libraries are not public assets in
 this release. Native packages contain shared/static libraries, applicable
@@ -66,3 +68,8 @@ The wheel image can reuse the provisioned Eigen headers with
 `tools/Dockerfile.wheel-eigen`. Its two base image digests are pinned; when
 building offline with local tag overrides, verify those digests first. Record
 the resulting immutable image digest in the private runner configuration.
+
+The previous V1.0.0 Toolbox asset refresh is a historical exception recorded in
+that public Release's manifest. Its original source lock, configuration, and
+test summary remain the record for the other eight product archives. Normal
+publication refuses to overwrite an existing tag or Release.
