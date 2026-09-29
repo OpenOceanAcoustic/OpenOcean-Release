@@ -23,6 +23,7 @@ from .runtime import EventLogger, TaskState, sha256_file, stable_digest
 
 
 RELEASE_REPOSITORY = "OpenOceanAcoustic/OpenOcean-Release"
+LINUX_BUILD_PYTHON = "/opt/python/cp314-cp314/bin/python"
 SOURCE_DIRECTORIES = {
     "field_core": "OpenOcean-Field-Core",
     "ray_mode": "OpenOcean-Field-RayMode",
@@ -477,6 +478,8 @@ class Orchestrator:
             environment = os.environ.copy()
             environment.update({
                 "OOA_LINUX_DIST_IMAGE": str(self.runner.section("linux")["image"]),
+                # Model CI defaults may point at ci-dist instead of our wheel image.
+                "OOA_LINUX_PYTHON": LINUX_BUILD_PYTHON,
                 "OOA_LINUX_DIST_DIR": str(output),
                 "OOA_LINUX_BUILD_DIR": str(build),
                 "OOA_FIELD_CI_CACHE_DIR": str(self.runner.storage("cache")),
@@ -761,7 +764,7 @@ Compress-Archive -Path (Join-Path $build 'dist\\*') -DestinationPath {_ps(guest_
                 if self.runner.section("linux").get("inherit_proxy", True) and os.environ.get(variable):
                     command += ["--env", variable]
             command += [
-                image, "/opt/python/cp314-cp314/bin/python",
+                image, LINUX_BUILD_PYTHON,
                 container_sources["toolbox"] + "/scripts/build_python_sdk.py",
                 "--platform", "linux", "--version", self.release_id,
                 "--output", "/output",
