@@ -81,6 +81,52 @@ class MatlabPreflightContractTest(unittest.TestCase):
         self.assertNotIn("Desktop Experience", source)
 
 
+class LinuxNativeToolchainContractTest(unittest.TestCase):
+    def test_native_scripts_use_the_same_image_and_python_as_sdk_builds(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            image = "openocean/ci-wheel@sha256:" + "a" * 64
+            orchestrator = object.__new__(Orchestrator)
+            orchestrator.release_id = "2026.9.29.1"
+            orchestrator.assets_dir = root / "assets"
+            orchestrator.assets_dir.mkdir()
+            orchestrator.runner = mock.Mock()
+            orchestrator.runner.storage.side_effect = lambda name: root / name
+            orchestrator.runner.section.return_value = {"image": image}
+            orchestrator.release = mock.Mock()
+            families = ("wi", "couple")
+            orchestrator.source_paths = {name: root / name for name in families}
+            orchestrator.resolved_sources = {name: "b" * 40 for name in families}
+            orchestrator._toolbox_script = mock.Mock(return_value=Path(__file__))
+            orchestrator._run_task = lambda name, inputs, outputs, action: action()
+            orchestrator.logger = mock.Mock()
+            sdk_command = []
+
+            def build(task, command, **kwargs):
+                if task == "linux.python":
+                    sdk_command.extend(command)
+                    output = root / "linux" / orchestrator.release_id / "python"
+                    archive = f"OpenOcean-Field-Python-{orchestrator.release_id}-linux-x86_64.tar.gz"
+                    (output / archive).write_bytes(b"python sdk")
+                    return
+                environment = kwargs["env"]
+                self.assertEqual(environment["OOA_LINUX_DIST_IMAGE"], image)
+                self.assertEqual(
+                    environment.get("OOA_LINUX_PYTHON"),
+                    sdk_command[sdk_command.index(image) + 1],
+                )
+                output = Path(environment["OOA_LINUX_DIST_DIR"])
+                (output / "native.tar.gz").write_bytes(b"native sdk")
+
+            orchestrator.logger.command.side_effect = build
+            with mock.patch.dict(os.environ, {"CMAKE_BUILD_PARALLEL_LEVEL": "2"}, clear=True):
+                orchestrator._linux_python()
+                for family in families:
+                    with self.subTest(family=family):
+                        asset = orchestrator._linux_native(family)
+                        self.assertEqual(asset.read_bytes(), b"native sdk")
+
+
 class WindowsNativeToolchainContractTest(unittest.TestCase):
     def test_failed_vm_status_never_starts_or_stops_the_guest(self) -> None:
         orchestrator = object.__new__(Orchestrator)
